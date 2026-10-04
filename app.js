@@ -330,7 +330,7 @@ function listTab(kind) {
   const best = kind === 'food' ? arr.filter(x => x.rank).sort((a, b) => a.rank - b.rank) : [];
   const row = ({ x, i }) => {
     const ex = exOf(x.name), sum = ex.reduce((s, e) => s + e.amount, 0);
-    const caption = [x.city, x.address && x.address !== x.city ? x.address : null].filter(Boolean).map(esc).join(' · ');
+    const caption = x.address ? esc(x.address) : esc(x.city || ''); // в адресе Яндекса город уже есть
     const menu = ui.menu === i ? `<div class="costmenu">${ex.map(e => `<div><span>${esc(e.name)}</span><span class="num">${fmt(e.amount)}</span></div>`).join('')}</div>` : '';
     return `<div class="pl-row${x.visited ? '' : ' not'}" data-i="${i}">
       <button class="box" data-lact="visited" aria-pressed="${!!x.visited}" aria-label="${x.visited ? 'Были' : 'Отметить «были»'}: ${esc(x.name)}">${x.visited ? '✓' : ''}</button>
