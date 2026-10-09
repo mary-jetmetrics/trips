@@ -23,7 +23,8 @@ button { font: inherit; color: inherit; }
 .head { display: grid; gap: var(--space-2); }
 .ls-title { font-family: var(--font-display); font-size: 34px; line-height: 40px; font-weight: 400; margin: 0; text-wrap: balance; }
 .ls-wave { display: block; width: 190px; height: 8px; margin-top: 2px; }
-.ls-wave path { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+/* волна под заголовком — цвета иконки приложения: у «Поездок» голубая (Мария, 09.10.26) */
+.ls-wave path { fill: none; stroke: #6ccdea; stroke-width: 1.4; }
 
 /* вкладки: текст, активная — ink с линией 1 px; по правилам формы системы */
 .tabs { display: flex; gap: var(--space-4); border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
