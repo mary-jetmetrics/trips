@@ -279,6 +279,19 @@ const OV_ICON = {
 const ovIb = (k, c) => `<span class="ov-ib" style="--cb:${c}">${OV_ICON[k]}</span>`;
 const MONEY_GROUPS = [['Дорога', ['Дорога'], 'var(--sky)'], ['Жильё', ['Жильё'], 'var(--pink)'], ['Еда', ['Готовая еда', 'Продукты'], 'var(--lemon)'], ['Остальное', null, 'var(--gray)']];
 const STARS = ['★★★', '★★', '★'];
+function agoText(t) {   // «закончилась 5 дней назад», «… 3 месяца назад», «… 1 год и 2 месяца назад»
+  const end = t.dates ? new Date(t.dates.end + 'T00:00:00') : new Date((t.month || '') + '-28T00:00:00'), now = today();
+  const days = Math.max(1, Math.round((now - end) / 864e5));
+  if (days < 45) return `закончилась ${days} ${plural(days, 'день', 'дня', 'дней')} назад`;
+  const months = (now.getFullYear() - end.getFullYear()) * 12 + now.getMonth() - end.getMonth();
+  if (months < 12) return `закончилась ${months} ${plural(months, 'месяц', 'месяца', 'месяцев')} назад`;
+  const y = Math.floor(months / 12), m = months % 12;
+  return `закончилась ${y} ${plural(y, 'год', 'года', 'лет')}${m ? ` и ${m} ${plural(m, 'месяц', 'месяца', 'месяцев')}` : ''} назад`;
+}
+// плашка заведения или места: цвет по оценке (Мария, 12.10.26): от 8 — зелёный, 4–7 — жёлтый, ниже 4 — красный; были без оценки — с галочкой
+const rateTone = r => r >= 8 ? 'good' : r >= 4 ? 'mid' : 'bad';
+const ovChip = x => x.rating ? `<span class="r-${rateTone(x.rating)}">${esc(x.name)} <b>${x.rating}</b></span>`
+  : x.visited ? `<span class="r-seen">✓ ${esc(x.name)}</span>` : `<span>${esc(x.name)}</span>`;
 function ovTop3(arr) {
   const rated = arr.filter(x => x.rating).sort((a, b) => b.rating - a.rating).slice(0, 3);
   if (rated.length) return rated;
@@ -292,14 +305,14 @@ function overviewTab() {
   // один город — «Пермь → Калининград · Зеленоградск · «Парк Хаус»»; несколько — путь по городам
   const route = cities.length > 1 ? [T.from || ((moves[0] || {}).move || '').split(' → ')[0], ...cities].filter(Boolean).join(' → ')
     : [moves[0] && moves[0].move, cities[0], stayNames.length ? `«${stayNames.join('», «')}»` : ''].filter(Boolean).join(' · ');
-  const headBlock = `<div class="ls-block ov-head"><div class="ov-row">${past ? '<span class="ls-tag ls-tag-white">поездка прошла</span>' : `<span class="ls-tag">${countdown(T)}</span>`}
+  const headBlock = `<div class="ls-block ov-head"><div class="ov-row">${past ? `<span class="ls-tag ls-tag-white">${agoText(T)}</span>` : `<span class="ls-tag">${countdown(T)}</span>`}
       <span class="ov-chip"><span class="tbadge" style="--cb:${tcolor}">${tsvg}</span>${tname}</span></div>
     ${route ? `<span class="ov-route">${OV_ICON[by === 'машина' ? 'car' : 'plane']}<span>${esc(route)}</span></span>` : ''}</div>`;
   let notesHtml = '', head = null;
   T.notes.forEach(n => { if (n.section && n.section !== head) { head = n.section; notesHtml += `<h3>${esc(head)}</h3>`; } notesHtml += `<p>${esc(n.text).replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')}</p>`; });
   const notes = `<section class="section"><h2 class="ls-h">Заметки</h2><div class="ls-block notes">${notesHtml || '<p class="cap">Пока без заметок. Наличные траты в поездке можно записывать сюда.</p>'}
       <label class="add w-only"><span aria-hidden="true">+</span><input data-note placeholder="добавить заметку" aria-label="Добавить заметку"></label></div></section>`;
-  const chips = arr => arr.length ? `<div class="ov-chips">${arr.map(x => `<span>${esc(x.name)}</span>`).join('')}</div>` : '<p class="cap">Пока пусто.</p>';
+  const chips = arr => arr.length ? `<div class="ov-chips">${arr.map(ovChip).join('')}</div>` : '<p class="cap">Пока пусто.</p>';
   if (!past) {
     const refs = (T.packing.sections || []).flatMap(x => x.items), done = refs.filter(i => i.done).length;
     const paid = EXP.reduce((a, e) => a + e.amount, 0), cats = {};
@@ -323,9 +336,9 @@ function overviewTab() {
   return `<div class="ov">${headBlock}
     ${P.length ? `<div class="ov-film">${P.map((p, i) => `<button class="ph" data-ph="${i}" aria-label="Открыть фото"><img data-file="${esc(p.file)}" alt=""></button>`).join('')}</div>` : ''}
     <div class="ls-block ov-money"><div class="ov-top"><span class="cap">Траты за поездку</span>${ovIb('rub', 'var(--pink)')}</div>
-      <b class="ov-big">${total ? fmt(total) : '—'}</b><span class="cap">${n ? `${n} ${plural(n, 'ночь', 'ночи', 'ночей')} · ` : ''}${cities.length} ${plural(cities.length, 'город', 'города', 'городов')}${n && total ? ` · ${fmt(total / n)} в сутки` : ''}</span>
+      <b class="ov-big">${total ? fmt(total) : '—'}</b><span class="cap">${[n ? `${n} ${plural(n, 'ночь', 'ночи', 'ночей')}` : '', n && total ? `${fmt(total / n)} в сутки` : ''].filter(Boolean).join(' · ')}</span>
       ${total ? `<div class="ov-stack">${groups.filter(g => g[1]).map(([nm, v, c]) => `<i style="width:${v / total * 100}%;background:${c}" title="${nm}"></i>`).join('')}</div>
-      <div class="ov-legend">${groups.filter(g => g[1]).map(([nm, v, c]) => `<div><span class="sq" style="--g:${c}"></span><span>${nm}</span><b>${fmt(v)}</b><span class="cap">${Math.round(v / total * 100)}%</span></div>`).join('')}</div>` : ''}</div>
+      <div class="ov-legend">${groups.filter(g => g[1]).map(([nm, v, c]) => `<span class="sq" style="--g:${c}"></span><span>${nm}</span><b>${fmt(v)}</b><span class="cap">${Math.round(v / total * 100)}%</span>`).join('')}</div>` : ''}</div>
     <div class="ov-tiles">
       <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Лучшая еда</span>${ovIb('food', 'var(--sand)')}</div>${top(T.food, 'Еда')}</div>
       <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Лучшие места</span>${ovIb('pin', 'var(--sky)')}</div>${top(T.places, 'Места')}</div>

@@ -322,11 +322,17 @@ button.tbadge { cursor: pointer; }
 .ov-money { display: grid; gap: var(--space-2); }
 .ov-stack { display: flex; height: 12px; border-radius: 3px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); margin-top: var(--space-1); }
 .ov-stack i { display: block; height: 100%; box-shadow: inset -1px 0 0 rgba(33, 28, 28, .18); }
-.ov-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-3); }
-.ov-legend div { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; column-gap: 6px; align-items: center; font-size: 14px; line-height: 20px; }
-.ov-legend b { font-weight: 600; font-variant-numeric: tabular-nums; }
-.ov-legend .cap { grid-column: 2 / -1; }
+/* легенда трат — компактная таблица рядом: цвет, группа, сумма, доля */
+.ov-legend { display: grid; grid-template-columns: 12px max-content max-content max-content; column-gap: var(--space-3); row-gap: 6px; align-items: center; justify-content: start; margin-top: var(--space-1); font-size: 14px; line-height: 20px; }
+.ov-legend b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.ov-legend .cap { text-align: right; font-variant-numeric: tabular-nums; }
+.ov-legend .sq { width: 10px; height: 10px; }
 .ov-pod { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .ov-pod div { display: grid; gap: 2px; align-content: start; font-size: 14px; line-height: 20px; }
 .ov-stars { color: var(--accent); letter-spacing: 1px; font-size: 14px; }
-@media (max-width: 480px) { .ov-legend { grid-template-columns: minmax(0, 1fr); } }
+/* плашки «на примете»: цвет по оценке */
+.ov-chips span b { font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 2px; }
+.ov-chips .r-good { background: var(--salad); border-color: rgba(19, 133, 64, .35); }
+.ov-chips .r-mid { background: var(--lemon); border-color: rgba(33, 28, 28, .14); }
+.ov-chips .r-bad { background: #fbe4e2; border-color: rgba(212, 67, 58, .35); }
+.ov-chips .r-seen { background: var(--surface); border-color: var(--line-strong); }
