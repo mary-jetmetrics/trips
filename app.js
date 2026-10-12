@@ -457,7 +457,8 @@ function packTab() {
     let body = '';
     if (open) {
       const base = baseOf(s.title);
-      if (!all.length && base && CAN_WRITE) body += `<div class="pstart"><button class="ls-btn" data-loadbase="${si}">Загрузить базовый список</button><span class="cap">${base.items.length} ${plural(base.items.length, 'пункт', 'пункта', 'пунктов')} — лишнее потом уберёшь</span></div>`;
+      // кнопка — пока базовый список в раздел не загружали: раздел может быть не пустым, если вещь добавили раньше (в т. ч. голосом через инбокс)
+      if (base && CAN_WRITE && !s.base && !all.some(r => r.it.bid)) body += `<div class="pstart"><button class="ls-btn" data-loadbase="${si}">Загрузить базовый список</button><span class="cap">${base.items.length} ${plural(base.items.length, 'пункт', 'пункта', 'пунктов')} — лишнее потом уберёшь</span></div>`;
       if (!all.length && s.title === 'Одежда и обувь') body += `<p class="cap pnote">Одежда приходит из гардероба: «🧳 В поездку».</p>`;
       const groups = [...new Set(all.map(r => r.it.group || ''))]; if (!groups.length) groups.push('');
       groups.forEach(gr => {
@@ -557,7 +558,9 @@ function packClick(e) {
   const ui = packUI();
   const lb = e.target.closest('[data-loadbase]');
   if (lb) { if (!CAN_WRITE) return true; const sec = TRIP.packing.sections[+lb.dataset.loadbase], base = baseOf(sec.title);
-    sec.items = base.items.map(i => ({ text: i.text, done: false, bag: null, group: '', sub: i.sub || '', parent: i.parent || '', bid: i.bid })); changed(); render(); return true; }
+    const have = new Set(sec.items.map(i => i.text.trim().toLowerCase()));   // уже добавленное остаётся, повторы из базового не берём
+    sec.items = [...base.items.filter(i => !have.has(i.text.trim().toLowerCase())).map(i => ({ text: i.text, done: false, bag: null, group: '', sub: i.sub || '', parent: i.parent || '', bid: i.bid })), ...sec.items];
+    sec.base = true; changed(); render(); return true; }
   const ak = e.target.closest('[data-ask]'); if (ak) { answerAsk(ak.dataset.ask); return true; }
   if (e.target.closest('[data-edit]')) return true;
   const cp = e.target.closest('[data-copy]');
