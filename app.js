@@ -338,7 +338,7 @@ function overviewTab() {
     <div class="ls-block ov-money"><div class="ov-top"><span class="cap">Траты за поездку</span>${ovIb('rub', 'var(--pink)')}</div>
       <b class="ov-big">${total ? fmt(total) : '—'}</b><span class="cap">${[n ? `${n} ${plural(n, 'ночь', 'ночи', 'ночей')}` : '', n && total ? `${fmt(total / n)} в сутки` : ''].filter(Boolean).join(' · ')}</span>
       ${total ? `<div class="ov-stack">${groups.filter(g => g[1]).map(([nm, v, c]) => `<i style="width:${v / total * 100}%;background:${c}" title="${nm}"></i>`).join('')}</div>
-      <div class="ov-legend">${groups.filter(g => g[1]).map(([nm, v, c]) => `<span class="sq" style="--g:${c}"></span><span>${nm}</span><b>${fmt(v)}</b><span class="cap">${Math.round(v / total * 100)}%</span>`).join('')}</div>` : ''}</div>
+      <div class="ov-groups">${groups.filter(g => g[1]).map(([nm, v, c]) => `<div><span class="sq" style="--g:${c}"></span><span>${nm} <span class="cap">${Math.round(v / total * 100)}%</span></span><b>${fmt(v)}</b></div>`).join('')}</div>` : ''}</div>
     <div class="ov-tiles">
       <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Лучшая еда</span>${ovIb('food', 'var(--sand)')}</div>${top(T.food, 'Еда')}</div>
       <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Лучшие места</span>${ovIb('pin', 'var(--sky)')}</div>${top(T.places, 'Места')}</div>
