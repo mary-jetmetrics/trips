@@ -523,14 +523,15 @@ function packAdd(input) {
 /* ---------- Места и еда: один список, «были» и «понравилось», траты привязаны по place ---------- */
 const LISTUI = {};
 function listTab(kind) {
-  const arr = TRIP[kind], ui = (LISTUI[TRIP.id + kind] = LISTUI[TRIP.id + kind] || { filter: null, menu: null });
+  const arr = TRIP[kind], ui = (LISTUI[TRIP.id + kind] = LISTUI[TRIP.id + kind] || { filter: null, menu: null, rate: null });
   const word = kind === 'food' ? ['заведение', 'заведения', 'заведений'] : ['место', 'места', 'мест'];
   const exOf = name => EXP.filter(e => e.place === name);
   const sumOf = name => exOf(name).reduce((s, e) => s + e.amount, 0);
   const visited = arr.filter(x => x.visited).length, spent = arr.reduce((s, x) => s + sumOf(x.name), 0);
   const lists = (TRIP.lists || []).filter(l => l.kind === kind);
   const shown = arr.map((x, i) => ({ x, i })).filter(({ x }) => !ui.filter || (ui.filter === 'yes' ? x.visited : !x.visited));
-  const best = kind === 'food' ? arr.filter(x => x.rank).sort((a, b) => a.rank - b.rank) : [];
+  const rated = kind === 'food' ? arr.filter(x => x.rating).sort((a, b) => b.rating - a.rating).slice(0, 5) : [];
+  const best = rated.length ? [] : kind === 'food' ? arr.filter(x => x.rank).sort((a, b) => a.rank - b.rank) : [];
   const row = ({ x, i }) => {
     const ex = exOf(x.name), sum = ex.reduce((s, e) => s + e.amount, 0);
     const caption = x.address ? esc(x.address) : esc(x.city || ''); // в адресе Яндекса город уже есть
@@ -539,8 +540,11 @@ function listTab(kind) {
       <button class="box" data-lact="visited" aria-pressed="${!!x.visited}" aria-label="${x.visited ? 'Были' : 'Отметить «были»'}: ${esc(x.name)}">${x.visited ? '✓' : ''}</button>
       <span class="nm"><span>${esc(x.name)}${x.rank ? ` <span class="cap">· ${x.rank}-е место</span>` : ''}</span>${caption ? `<span class="linked">${caption}</span>` : ''}${x.oid ? `<a href="https://yandex.ru/maps/org/${esc(x.oid)}" target="_blank" rel="noopener">в Яндекс Картах</a>` : ''}</span>
       <span class="cost">${sum ? `<button data-lact="cost" title="${esc(ex.map(e => e.name + ' — ' + fmt(e.amount)).join('\n'))}">${fmt(sum)}</button>${menu}` : ''}</span>
-      <button class="heart" data-lact="liked" aria-pressed="${!!x.liked}" aria-label="Понравилось: ${esc(x.name)}">♥</button>
-    </div>`;
+      ${kind === 'food'
+        ? (x.visited ? `<button class="rate${x.rating ? '' : ' empty'}" data-lact="rate" aria-label="Оценка: ${esc(x.name)}">${x.rating || 'оценить'}</button>` : '<span></span>')
+        : `<button class="heart" data-lact="liked" aria-pressed="${!!x.liked}" aria-label="Понравилось: ${esc(x.name)}">♥</button>`}
+    </div>${kind === 'food' && ui.rate === i ? `<div class="rater" data-i="${i}"><span class="cap">Оценка из 10</span><div class="rate-b">${Array.from({ length: 10 }, (_, k) =>
+      `<button data-lact="setrate" data-v="${k + 1}" aria-pressed="${x.rating === k + 1}">${k + 1}</button>`).join('')}<button class="later" data-lact="later">${x.rating ? 'убрать оценку' : 'позже'}</button></div></div>` : ''}`;
   };
   const chip = (key, label, n) => `<button data-lfilter="${key || ''}" aria-pressed="${ui.filter === key}">${label} <span class="c num">${n}</span></button>`;
   return `<div style="display:grid;gap:var(--space-6)">
@@ -549,6 +553,7 @@ function listTab(kind) {
       <div class="ls-block ls-stat"><b>${visited}</b><span class="cap">были</span></div>
       <div class="ls-block ls-stat"><b>${spent ? fmt(spent) : '—'}</b><span class="cap">${kind === 'food' ? 'на еду в этих местах' : 'на места вместе с дорогой и едой там'}</span></div>
     </div>
+    ${rated.length ? `<section class="section"><h2 class="ls-h">Лучшие</h2><div class="podium3">${rated.map(r => `<div class="ls-block pod"><span class="pl">${r.rating}</span><b>${esc(r.name)}</b><span class="cap">${sumOf(r.name) ? fmt(sumOf(r.name)) : ''}</span></div>`).join('')}</div></section>` : ''}
     ${best.length ? `<section class="section"><h2 class="ls-h">Лучшие рестораны</h2><div class="podium3">${best.map(r => `<div class="ls-block pod"><span class="pl">${r.rank}</span><b>${esc(r.name)}</b><span class="cap">${sumOf(r.name) ? fmt(sumOf(r.name)) : ''}</span></div>`).join('')}</div></section>` : ''}
     <section class="section">
       ${lists.length ? `<p class="cap lists" style="margin:0">Из Яндекс Карт: ${lists.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(' ')}</p>` : ''}
@@ -566,7 +571,10 @@ function listClick(e) {
   const i = +a.closest('[data-i]').dataset.i, x = TRIP[kind][i];
   if (a.dataset.lact === 'cost') { ui.menu = ui.menu === i ? null : i; render(); return true; }
   if (!CAN_WRITE) return true;
-  if (a.dataset.lact === 'visited') x.visited = !x.visited;
+  if (a.dataset.lact === 'visited') { x.visited = !x.visited; ui.rate = kind === 'food' && x.visited && !x.rating ? i : null; }
+  if (a.dataset.lact === 'rate') { ui.rate = ui.rate === i ? null : i; render(); return true; }
+  if (a.dataset.lact === 'setrate') { x.rating = +a.dataset.v; ui.rate = null; }
+  if (a.dataset.lact === 'later') { if (x.rating) delete x.rating; ui.rate = null; }
   if (a.dataset.lact === 'liked') x.liked = !x.liked;
   changed(); render(); return true;
 }
