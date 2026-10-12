@@ -337,6 +337,7 @@ function spend() {
 /* ---------- Чемодан (бывшая вкладка «Вещи») ---------- */
 const BAGS = [{ name: 'Чемодан', tag: 'ls-tag-lemon', color: 'var(--lemon)' }, { name: 'Ручная кладь', tag: 'ls-tag-sky', color: 'var(--sky)' },
   { name: 'На себя', tag: 'ls-tag-gray', color: 'var(--gray)' }, { name: 'Мини-сумка', tag: '', color: 'var(--pink)' }];
+const SUB_GROUPS = new Set(['Верх', 'Низ', 'Аксессуары']);   // где в «Чемодане» нужны подзаголовки подгрупп
 const DEFAULT_SECTIONS = ['Одежда и обувь', 'Уход и макияж', 'Другое', 'Супер-важное (документы и др)'];
 const PACKUI = {};
 const packUI = () => (PACKUI[TRIP.id] = PACKUI[TRIP.id] || { filter: null, hideDone: false, closed: new Set(), menu: null });
@@ -372,9 +373,14 @@ function packTab() {
     if (open) {
       const groups = [...new Set(all.map(r => r.it.group || ''))]; if (!groups.length) groups.push('');
       groups.forEach(gr => {
-        // подзаголовков подгрупп нет, но вещи одной подгруппы стоят подряд: гардероб присылает их по номерам, вперемешку
+        // вещи одной подгруппы стоят подряд (гардероб присылает их по номерам, вперемешку), так подзаголовки не повторяются;
+        // подзаголовки — только в «Верхе», «Низе» и «Аксессуарах» (Мария, 12.10.26)
         const inGroup = all.filter(r => (r.it.group || '') === gr), subs = [...new Set(inGroup.map(r => r.it.sub || ''))];
-        const rows = inGroup.filter(visible).sort((a, b) => subs.indexOf(a.it.sub || '') - subs.indexOf(b.it.sub || '') || a.ii - b.ii).map(row).join('');
+        let subNow = null, rows = '';
+        inGroup.filter(visible).sort((a, b) => subs.indexOf(a.it.sub || '') - subs.indexOf(b.it.sub || '') || a.ii - b.ii).forEach(r => {
+          if (SUB_GROUPS.has(gr) && (r.it.sub || '') !== subNow) { subNow = r.it.sub || ''; if (subNow) rows += `<p class="ps">${esc(subNow)}</p>`; }
+          rows += row(r);
+        });
         body += `<div class="pgroup">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="добавить вещь" aria-label="Добавить вещь"></label></div>`;
       });
     }
