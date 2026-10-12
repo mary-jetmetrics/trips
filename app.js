@@ -523,14 +523,14 @@ function packAdd(input) {
 /* ---------- Места и еда: один список, «были» и «понравилось», траты привязаны по place ---------- */
 const LISTUI = {};
 function listTab(kind) {
-  const arr = TRIP[kind], ui = (LISTUI[TRIP.id + kind] = LISTUI[TRIP.id + kind] || { filter: null, menu: null, rate: null });
+  const arr = TRIP[kind], ui = (LISTUI[TRIP.id + kind] = LISTUI[TRIP.id + kind] || { filter: null, menu: null, rate: null, del: null });
   const word = kind === 'food' ? ['заведение', 'заведения', 'заведений'] : ['место', 'места', 'мест'];
   const exOf = name => EXP.filter(e => e.place === name);
   const sumOf = name => exOf(name).reduce((s, e) => s + e.amount, 0);
   const visited = arr.filter(x => x.visited).length, spent = arr.reduce((s, x) => s + sumOf(x.name), 0);
   const lists = (TRIP.lists || []).filter(l => l.kind === kind);
   const shown = arr.map((x, i) => ({ x, i })).filter(({ x }) => !ui.filter || (ui.filter === 'yes' ? x.visited : !x.visited));
-  const rated = kind === 'food' ? arr.filter(x => x.rating).sort((a, b) => b.rating - a.rating).slice(0, 5) : [];
+  const rated = arr.filter(x => x.rating).sort((a, b) => b.rating - a.rating).slice(0, 5);   // «Лучшие» — и в еде, и в местах
   const best = rated.length ? [] : kind === 'food' ? arr.filter(x => x.rank).sort((a, b) => a.rank - b.rank) : [];
   const row = ({ x, i }) => {
     const ex = exOf(x.name), sum = ex.reduce((s, e) => s + e.amount, 0);
@@ -540,10 +540,9 @@ function listTab(kind) {
       <button class="box" data-lact="visited" aria-pressed="${!!x.visited}" aria-label="${x.visited ? 'Были' : 'Отметить «были»'}: ${esc(x.name)}">${x.visited ? '✓' : ''}</button>
       <span class="nm"><span>${esc(x.name)}${x.rank ? ` <span class="cap">· ${x.rank}-е место</span>` : ''}</span>${caption ? `<span class="linked">${caption}</span>` : ''}${x.oid ? `<a href="https://yandex.ru/maps/org/${esc(x.oid)}" target="_blank" rel="noopener">в Яндекс Картах</a>` : ''}</span>
       <span class="cost">${sum ? `<button data-lact="cost" title="${esc(ex.map(e => e.name + ' — ' + fmt(e.amount)).join('\n'))}">${fmt(sum)}</button>${menu}` : ''}</span>
-      ${kind === 'food'
-        ? (x.visited ? `<button class="rate${x.rating ? '' : ' empty'}" data-lact="rate" aria-label="Оценка: ${esc(x.name)}">${x.rating || 'оценить'}</button>` : '<span></span>')
-        : `<button class="heart" data-lact="liked" aria-pressed="${!!x.liked}" aria-label="Понравилось: ${esc(x.name)}">♥</button>`}
-    </div>${kind === 'food' && ui.rate === i ? `<div class="rater" data-i="${i}"><span class="cap">Оценка из 10</span><div class="rate-b">${Array.from({ length: 10 }, (_, k) =>
+      ${x.visited ? `<button class="rate${x.rating ? '' : ' empty'}" data-lact="rate" aria-label="Оценка: ${esc(x.name)}">${x.rating || 'оценить'}</button>` : '<span></span>'}
+      <button class="ldel w-only${ui.del === i ? ' sure' : ''}" data-lact="del" title="Убрать" aria-label="Убрать: ${esc(x.name)}">${ui.del === i ? 'убрать?' : '×'}</button>
+    </div>${ui.rate === i ? `<div class="rater" data-i="${i}"><span class="cap">Оценка из 10</span><div class="rate-b">${Array.from({ length: 10 }, (_, k) =>
       `<button data-lact="setrate" data-v="${k + 1}" aria-pressed="${x.rating === k + 1}">${k + 1}</button>`).join('')}<button class="later" data-lact="later">${x.rating ? 'убрать оценку' : 'позже'}</button></div></div>` : ''}`;
   };
   const chip = (key, label, n) => `<button data-lfilter="${key || ''}" aria-pressed="${ui.filter === key}">${label} <span class="c num">${n}</span></button>`;
@@ -571,7 +570,12 @@ function listClick(e) {
   const i = +a.closest('[data-i]').dataset.i, x = TRIP[kind][i];
   if (a.dataset.lact === 'cost') { ui.menu = ui.menu === i ? null : i; render(); return true; }
   if (!CAN_WRITE) return true;
-  if (a.dataset.lact === 'visited') { x.visited = !x.visited; ui.rate = kind === 'food' && x.visited && !x.rating ? i : null; }
+  if (a.dataset.lact === 'del') {   // с подтверждением: к месту бывают привязаны траты
+    if (ui.del !== i) { ui.del = i; ui.rate = null; ui.menu = null; render(); return true; }
+    TRIP[kind].splice(i, 1); ui.del = null; ui.rate = null; ui.menu = null; changed(); render(); return true;
+  }
+  ui.del = null;
+  if (a.dataset.lact === 'visited') { x.visited = !x.visited; ui.rate = x.visited && !x.rating ? i : null; }
   if (a.dataset.lact === 'rate') { ui.rate = ui.rate === i ? null : i; render(); return true; }
   if (a.dataset.lact === 'setrate') { x.rating = +a.dataset.v; ui.rate = null; }
   if (a.dataset.lact === 'later') { if (x.rating) delete x.rating; ui.rate = null; }
