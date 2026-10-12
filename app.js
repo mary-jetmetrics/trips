@@ -118,7 +118,7 @@ function route() {
   if (m && TRIPS[m[1]]) {
     if (!TRIP || TRIP.id !== m[1]) { setTrip(m[1]); state.group = null; }
     const tab = m[2] ? decodeURIComponent(m[2]) : null;
-    state.tab = tab === 'Вещи' ? 'Чемодан' : tab || (ended(TRIP) ? 'Траты' : 'Чемодан');
+    state.tab = tab === 'Вещи' ? 'Чемодан' : tab || 'Обзор';   // поездка открывается на «Обзоре» (Мария, 12.10.26)
     tripView();
   } else catalogView();
   window.scrollTo(0, 0);
@@ -259,21 +259,77 @@ function tripView() {
 function render() {
   const pane = document.getElementById('pane'); if (!pane) return;
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.tab)));
-  const views = { 'Обзор': overviewTab, 'Чемодан': packTab, 'Места': () => listTab('places'), 'Еда': () => listTab('food'), 'Траты': spend, 'Фото': () => photosTab() + lightbox() };
+  const views = { 'Обзор': () => overviewTab() + lightbox(), 'Чемодан': packTab, 'Места': () => listTab('places'), 'Еда': () => listTab('food'), 'Траты': spend, 'Фото': () => photosTab() + lightbox() };
   pane.innerHTML = (views[state.tab] || spend)();
-  if (state.tab === 'Фото') hydratePhotos();
+  if (state.tab === 'Фото' || state.tab === 'Обзор') hydratePhotos();
   if (state.tab === 'Чемодан') hydrateWardrobe();
 }
 
-/* ---------- Обзор (пока заметки) ---------- */
+/* ---------- Обзор: сводка поездки (вариант А, Мария, 12.10.26) ---------- */
+// до поездки: шапка (через сколько дней, тип, дорога, жильё) и плитки — чемодан, оплачено, еда и места на примете списком;
+// после: та же шапка, лента фото (открываются на весь экран), деньги по группам, три лучших заведения и места со звёздами
+const OV_ICON = {
+  suit: '<svg viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="3" rx="1.2"/><rect x="5" y="6.5" width="14" height="13" rx="2"/><path d="M5 12 H19"/></svg>',
+  pin: '<svg viewBox="0 0 24 24"><path d="M12 21 C7 15.5 5 12.5 5 9.5 a7 7 0 0 1 14 0 c0 3 -2 6 -7 11.5 Z"/><circle cx="12" cy="9.5" r="2.4"/></svg>',
+  food: '<svg viewBox="0 0 24 24"><path d="M7 3 V11 M5 3 V8 a2 2 0 0 0 4 0 V3 M7 11 V21 M16 21 V3 c-2.5 1.5 -3 4 -3 7 h3"/></svg>',
+  rub: '<svg viewBox="0 0 24 24"><path d="M9 20 V4 H14 a4 4 0 0 1 0 8 H6 M6 16 H14"/></svg>',
+  plane: '<svg viewBox="0 0 24 24"><path d="M3 11 L21 4 L15 20 L11 13 Z M11 13 L21 4"/></svg>',
+  car: '<svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="6" rx="2"/><path d="M6 10 L8 6 H16 L18 10"/><circle cx="7.5" cy="17.5" r="1.6"/><circle cx="16.5" cy="17.5" r="1.6"/></svg>',
+};
+const ovIb = (k, c) => `<span class="ov-ib" style="--cb:${c}">${OV_ICON[k]}</span>`;
+const MONEY_GROUPS = [['Дорога', ['Дорога'], 'var(--sky)'], ['Жильё', ['Жильё'], 'var(--pink)'], ['Еда', ['Готовая еда', 'Продукты'], 'var(--lemon)'], ['Остальное', null, 'var(--gray)']];
+const STARS = ['★★★', '★★', '★'];
+function ovTop3(arr) {
+  const rated = arr.filter(x => x.rating).sort((a, b) => b.rating - a.rating).slice(0, 3);
+  if (rated.length) return rated;
+  return arr.filter(x => x.rank).sort((a, b) => a.rank - b.rank).slice(0, 3);   // архив: рейтинг из Notion
+}
 function overviewTab() {
-  let html = '', head = null;
-  TRIP.notes.forEach(n => { if (n.section && n.section !== head) { head = n.section; html += `<h3>${esc(head)}</h3>`; } html += `<p>${esc(n.text).replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')}</p>`; });
-  return `<div style="display:grid;gap:var(--space-6)">
-    <p class="cap later" style="padding:0">Обзор поездки соберём позже, из остальных вкладок.</p>
-    <section class="section"><h2 class="ls-h">Заметки</h2><div class="ls-block notes">${html || '<p class="cap">Пока без заметок.</p>'}
-      <label class="add w-only"><span aria-hidden="true">+</span><input data-note placeholder="добавить заметку" aria-label="Добавить заметку"></label></div></section>
-  </div>`;
+  const T = TRIP, past = isPast(T), [tname, tcolor, tsvg] = TYPES[typeOf(T)];
+  const its = T.itinerary || [], moves = its.filter(x => x.move), stays = its.filter(x => x.city);
+  const cities = [...new Set(stays.map(x => x.city))], stayNames = [...new Set(stays.map(x => x.stay).filter(Boolean))];
+  const by = (moves[0] || {}).by || (T.transport || [])[0];
+  // один город — «Пермь → Калининград · Зеленоградск · «Парк Хаус»»; несколько — путь по городам
+  const route = cities.length > 1 ? [T.from || ((moves[0] || {}).move || '').split(' → ')[0], ...cities].filter(Boolean).join(' → ')
+    : [moves[0] && moves[0].move, cities[0], stayNames.length ? `«${stayNames.join('», «')}»` : ''].filter(Boolean).join(' · ');
+  const headBlock = `<div class="ls-block ov-head"><div class="ov-row">${past ? '<span class="ls-tag ls-tag-white">поездка прошла</span>' : `<span class="ls-tag">${countdown(T)}</span>`}
+      <span class="ov-chip"><span class="tbadge" style="--cb:${tcolor}">${tsvg}</span>${tname}</span></div>
+    ${route ? `<span class="ov-route">${OV_ICON[by === 'машина' ? 'car' : 'plane']}<span>${esc(route)}</span></span>` : ''}</div>`;
+  let notesHtml = '', head = null;
+  T.notes.forEach(n => { if (n.section && n.section !== head) { head = n.section; notesHtml += `<h3>${esc(head)}</h3>`; } notesHtml += `<p>${esc(n.text).replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')}</p>`; });
+  const notes = `<section class="section"><h2 class="ls-h">Заметки</h2><div class="ls-block notes">${notesHtml || '<p class="cap">Пока без заметок. Наличные траты в поездке можно записывать сюда.</p>'}
+      <label class="add w-only"><span aria-hidden="true">+</span><input data-note placeholder="добавить заметку" aria-label="Добавить заметку"></label></div></section>`;
+  const chips = arr => arr.length ? `<div class="ov-chips">${arr.map(x => `<span>${esc(x.name)}</span>`).join('')}</div>` : '<p class="cap">Пока пусто.</p>';
+  if (!past) {
+    const refs = (T.packing.sections || []).flatMap(x => x.items), done = refs.filter(i => i.done).length;
+    const paid = EXP.reduce((a, e) => a + e.amount, 0), cats = {};
+    EXP.forEach(e => { cats[e.category] = (cats[e.category] || 0) + e.amount; });
+    return `<div class="ov">${headBlock}
+      <div class="ov-tiles">
+        <div class="ls-block ov-tile"><div class="ov-top"><span class="cap">Чемодан</span>${ovIb('suit', 'var(--lemon)')}</div><b class="ov-big">${done} из ${refs.length}</b>
+          <div class="ov-bar"><i style="width:${refs.length ? done / refs.length * 100 : 0}%;background:var(--lemon)"></i></div><span class="cap">собрано</span></div>
+        <div class="ls-block ov-tile"><div class="ov-top"><span class="cap">Оплачено</span>${ovIb('rub', 'var(--pink)')}</div><b class="ov-big">${paid ? fmt(paid) : '—'}</b>
+          <span class="cap">${Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(k.toLowerCase())} ${fmt(v)}`).join(' · ')}</span></div>
+        <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Еда на примете · ${T.food.length}</span>${ovIb('food', 'var(--sand)')}</div>${chips(T.food)}</div>
+        <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Места на примете · ${T.places.length}</span>${ovIb('pin', 'var(--sky)')}</div>${chips(T.places)}</div>
+      </div>${notes}</div>`;
+  }
+  // прошедшая поездка
+  const P = T.photos || [], total = EXP.reduce((a, e) => a + e.amount, 0), n = nightsOf(T);
+  const groups = MONEY_GROUPS.map(([name, cs, color]) => [name, EXP.filter(e => cs ? cs.includes(e.category) : !MONEY_GROUPS.some(g => g[1] && g[1].includes(e.category))).reduce((a, e) => a + e.amount, 0), color]);
+  const top = (arr, kind) => { const t3 = ovTop3(arr);
+    if (!t3.length) return `${chips(arr.filter(x => x.visited))}<p class="cap">Поставь оценки во вкладке «${kind}» — здесь соберутся три лучших.</p>`;
+    return `<div class="ov-pod">${t3.map((x, i) => `<div><span class="ov-stars" aria-label="${3 - i} из 3">${STARS[i]}</span><span>${esc(x.name)}</span>${x.rating ? `<span class="cap">${x.rating} из 10</span>` : ''}</div>`).join('')}</div>`; };
+  return `<div class="ov">${headBlock}
+    ${P.length ? `<div class="ov-film">${P.map((p, i) => `<button class="ph" data-ph="${i}" aria-label="Открыть фото"><img data-file="${esc(p.file)}" alt=""></button>`).join('')}</div>` : ''}
+    <div class="ls-block ov-money"><div class="ov-top"><span class="cap">Траты за поездку</span>${ovIb('rub', 'var(--pink)')}</div>
+      <b class="ov-big">${total ? fmt(total) : '—'}</b><span class="cap">${n ? `${n} ${plural(n, 'ночь', 'ночи', 'ночей')} · ` : ''}${cities.length} ${plural(cities.length, 'город', 'города', 'городов')}${n && total ? ` · ${fmt(total / n)} в сутки` : ''}</span>
+      ${total ? `<div class="ov-stack">${groups.filter(g => g[1]).map(([nm, v, c]) => `<i style="width:${v / total * 100}%;background:${c}" title="${nm}"></i>`).join('')}</div>
+      <div class="ov-legend">${groups.filter(g => g[1]).map(([nm, v, c]) => `<div><span class="sq" style="--g:${c}"></span><span>${nm}</span><b>${fmt(v)}</b><span class="cap">${Math.round(v / total * 100)}%</span></div>`).join('')}</div>` : ''}</div>
+    <div class="ov-tiles">
+      <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Лучшая еда</span>${ovIb('food', 'var(--sand)')}</div>${top(T.food, 'Еда')}</div>
+      <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Лучшие места</span>${ovIb('pin', 'var(--sky)')}</div>${top(T.places, 'Места')}</div>
+    </div>${notes}</div>`;
 }
 
 /* ---------- Траты ---------- */
@@ -652,7 +708,7 @@ root.addEventListener('click', e => {
   if (!TRIP) return;
   if (state.tab === 'Чемодан' && packClick(e)) return;
   if ((state.tab === 'Места' || state.tab === 'Еда') && listClick(e)) return;
-  if (state.tab === 'Фото') {
+  if (state.tab === 'Фото' || state.tab === 'Обзор') {   // фото из ленты «Обзора» открываются тем же просмотром
     const ui = phUI(), o = e.target.closest('[data-ph]');
     if (o) { ui.open = +o.dataset.ph; render(); return; }
     const lb = e.target.closest('[data-lb]');
@@ -690,7 +746,7 @@ root.addEventListener('submit', e => { if (e.target.id === 'newtrip') { e.preven
 root.addEventListener('change', e => {
   if (e.target.id === 'nt-nodates') { document.getElementById('nt-dates').hidden = e.target.checked; document.getElementById('nt-month').hidden = !e.target.checked; return; } if ((e.target.id === 'phfile' || e.target.id === 'phfile2') && e.target.files.length && CAN_WRITE) addPhotos([...e.target.files]); });
 document.addEventListener('keydown', e => {
-  if (!TRIP || state.tab !== 'Фото' || phUI().open === null || e.target.id === 'phcap') return;
+  if (!TRIP || (state.tab !== 'Фото' && state.tab !== 'Обзор') || phUI().open === null || e.target.id === 'phcap') return;
   const map = { Escape: 'close', ArrowLeft: 'prev', ArrowRight: 'next' }, b = map[e.key] && document.querySelector(`[data-lb="${map[e.key]}"]`); if (b) b.click();
 });
 
