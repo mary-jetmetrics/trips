@@ -290,7 +290,7 @@ function agoText(t) {   // «закончилась 5 дней назад», «�
 }
 // плашка заведения или места: цвет по оценке (Мария, 12.10.26): от 8 — зелёный, 4–7 — жёлтый, ниже 4 — красный; были без оценки — с галочкой
 const rateTone = r => r >= 8 ? 'good' : r >= 4 ? 'mid' : 'bad';
-const ovChip = x => x.rating ? `<span class="r-${rateTone(x.rating)}">${esc(x.name)} <b>${x.rating}</b></span>`
+const ovChip = x => x.rating ? `<span class="r-${rateTone(x.rating)}" title="${x.rating} из 10">${esc(x.name)}</span>`   // только цвет, без цифры (Мария, 12.10.26)
   : x.visited ? `<span class="r-seen">✓ ${esc(x.name)}</span>` : `<span>${esc(x.name)}</span>`;
 function ovTop3(arr) {
   const rated = arr.filter(x => x.rating).sort((a, b) => b.rating - a.rating).slice(0, 3);
