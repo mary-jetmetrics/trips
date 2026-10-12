@@ -33,6 +33,7 @@ function when(t) {
   const d = a.getMonth() === b.getMonth() ? `${a.getDate()}–${b.getDate()} ${MON_GEN[b.getMonth()]}` : `${a.getDate()} ${MON_GEN[a.getMonth()]} – ${b.getDate()} ${MON_GEN[b.getMonth()]}`;
   return `${d} ${b.getFullYear()} · ${n} ${plural(n, 'ночь', 'ночи', 'ночей')}`;
 }
+const PEN = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3L6 13H3v-3z M9 4l3 3"/></svg>';
 const WAVE = '<svg class="ls-wave" viewBox="0 0 190 8" aria-hidden="true"><path d="M1 4 Q 6 0 11 4 T 21 4 T 31 4 T 41 4 T 51 4 T 61 4 T 71 4 T 81 4 T 91 4 T 101 4 T 111 4 T 121 4 T 131 4 T 141 4 T 151 4 T 161 4 T 171 4 T 181 4"/></svg>';
 const UMBRELLA = '<svg class="ls-umbrella" width="40" height="40" viewBox="0 0 46 46" aria-hidden="true"><g transform="rotate(-14 23 23)"><path class="canopy" d="M8 20 A15 11 0 0 1 38 20 Z"/><path class="stripe" d="M23 20 L8 20 A15 11 0 0 1 12.5 12.2 Z"/><path class="stripe" d="M23 20 L18 9.3 A15 11 0 0 1 28 9.3 Z"/><path class="stripe" d="M23 20 L33.5 12.2 A15 11 0 0 1 38 20 Z"/><line class="stick" x1="23" y1="20" x2="22" y2="40"/></g></svg>';
 
@@ -103,6 +104,7 @@ async function boot() {
   try {
     INDEX = await readJSON('index.json');
     await Promise.all(INDEX.map(async t => { TRIPS[t.id] = await readJSON(`trips/${t.id}.json`); }));
+    try { BASE = await readJSON('packing-base.json'); } catch (e) { BASE = null; }
   } catch (e) {
     if ([401, 403, 404].includes(e.status)) { LS.del('trips-token'); TOKEN = null; return loginView('Ключ не подошёл. Проверь, что он для репозитория trips-data и не просрочен.'); }
     root.innerHTML = `<p class="cap">Не получилось загрузить поездки: ${esc(e.message)}. Проверь интернет и обнови страницу.</p>`; return;
@@ -219,7 +221,7 @@ async function createTrip(form) {
   const month = nodates ? String(f.get('month') || new Date().toISOString().slice(0, 7)) : start.slice(0, 7);
   let id = `${month}-${slug(title) || 'poezdka'}`; for (let k = 2; TRIPS[id]; k++) id = `${month}-${slug(title) || 'poezdka'}-${k}`;
   const trip = { id, title, type: f.get('type') || 'city', month, dates: nodates ? null : { start, end }, transport: [], from: 'Пермь', itinerary: [],
-    expenses: [], packing: { sections: [{ title: 'Одежда и обувь', items: [] }] }, places: [], food: [], lists: [], notes: [], photos: [] };
+    expenses: [], packing: { sections: DEFAULT_SECTIONS.map(title => ({ title, items: [] })) }, places: [], food: [], lists: [], notes: [], photos: [] };
   const btn = form.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Создаю…';
   try {
     await writeFile(`trips/${id}.json`, b64enc(JSON.stringify(trip, null, 1)), `«${title}»: новая поездка`);
@@ -234,7 +236,14 @@ async function createTrip(form) {
 const TABS = ['Обзор', 'Чемодан', 'Места', 'Еда', 'Траты', 'Фото'];
 function setTrip(id) {
   TRIP = TRIPS[id];
-  TRIP.packing = TRIP.packing || { sections: [] }; TRIP.places = TRIP.places || []; TRIP.food = TRIP.food || []; TRIP.photos = TRIP.photos || []; TRIP.notes = TRIP.notes || [];
+  TRIP.packing = TRIP.packing || { sections: [] };
+  TRIP.packing.sections.forEach(x => { if (OLD_TITLES[x.title]) x.title = OLD_TITLES[x.title]; });
+  if (!isPast(TRIP)) {
+    const has = new Set(TRIP.packing.sections.map(x => x.title)), order = t => { const i = DEFAULT_SECTIONS.indexOf(t); return i < 0 ? 99 : i; };
+    DEFAULT_SECTIONS.forEach(t => { if (!has.has(t)) TRIP.packing.sections.push({ title: t, items: [] }); });
+    TRIP.packing.sections.sort((a, b) => order(a.title) - order(b.title));
+  }
+  TRIP.places = TRIP.places || []; TRIP.food = TRIP.food || []; TRIP.photos = TRIP.photos || []; TRIP.notes = TRIP.notes || [];
   EXP = TRIP.expenses = TRIP.expenses || [];
   nights = nightsOf(TRIP);
   total = EXP.reduce((s, e) => s + e.amount, 0);
@@ -338,7 +347,12 @@ function spend() {
 const BAGS = [{ name: 'Чемодан', tag: 'ls-tag-lemon', color: 'var(--lemon)' }, { name: 'Ручная кладь', tag: 'ls-tag-sky', color: 'var(--sky)' },
   { name: 'На себя', tag: 'ls-tag-gray', color: 'var(--gray)' }, { name: 'Мини-сумка', tag: '', color: 'var(--pink)' }];
 const SUB_GROUPS = new Set(['Верх', 'Низ', 'Аксессуары']);   // где в «Чемодане» нужны подзаголовки подгрупп
-const DEFAULT_SECTIONS = ['Одежда и обувь', 'Уход и макияж', 'Другое', 'Супер-важное (документы и др)'];
+// разделы чемодана: одежда приходит из гардероба; у «Ухода», «Другого» и «Супер-важного» есть базовый список
+// (packing-base.json, взят из мая 2025), «Еда в дорогу» — без базового, каждый раз своё (Мария, 12.10.26)
+const DEFAULT_SECTIONS = ['Одежда и обувь', 'Уход и макияж', 'Другое', 'Супер-важное', 'Еда в дорогу'];
+const OLD_TITLES = { 'Супер-важное (документы и др)': 'Супер-важное' };
+let BASE = null;
+const baseOf = title => BASE && (BASE.sections || []).find(x => x.title === title);
 const PACKUI = {};
 const packUI = () => (PACKUI[TRIP.id] = PACKUI[TRIP.id] || { filter: null, hideDone: false, closed: new Set(), menu: null });
 const packRefs = () => TRIP.packing.sections.flatMap((s, si) => s.items.map((it, ii) => ({ si, ii, it, sec: s.title, id: `${si}.${ii}` })));
@@ -362,15 +376,20 @@ function packTab() {
     const menu = ui.menu === r.id ? `<div class="bagmenu" role="menu">${BAGS.map(x => `<button role="menuitem" data-setbag="${esc(x.name)}"><span class="ls-tag ${x.tag}">${esc(x.name)}</span></button>`).join('')}${b ? '<button role="menuitem" data-setbag="" class="cap">убрать место</button>' : ''}</div>` : '';
     return `<div class="pi${r.it.done ? ' done' : ''}${r.it.parent ? ' child' : ''}" data-id="${r.id}">
       <button class="box" data-act="done" aria-pressed="${!!r.it.done}" aria-label="${r.it.done ? 'Снять отметку' : 'Отметить'}: ${esc(r.it.text)}">${r.it.done ? '✓' : ''}</button>
-      <span class="tx" data-act="done">${r.it.wardrobe ? wardrobeThumb(r.it.wardrobe) : ''}<span>${esc(r.it.text)}</span></span>
+      ${ui.edit === r.id ? `<input class="pedit" data-edit="${r.id}" value="${esc(r.it.text)}" aria-label="Название вещи">`
+        : `<span class="tx" data-act="done">${r.it.wardrobe ? wardrobeThumb(r.it.wardrobe) : ''}<span>${esc(r.it.text)}</span></span>`}
       <span class="bagwrap"><button class="ls-tag ${b ? b.tag : 'nobag'}" data-act="bag" aria-haspopup="menu" aria-expanded="${ui.menu === r.id}">${b ? esc(b.name) : 'куда?'}</button>${menu}</span>
-      <button class="x w-only" data-act="del" title="Удалить" aria-label="Удалить: ${esc(r.it.text)}">×</button>
-    </div>`;
+      <button class="pen w-only" data-act="edit" title="Изменить название" aria-label="Изменить: ${esc(r.it.text)}">${PEN}</button>
+      <button class="x w-only" data-act="del" title="Убрать из этой поездки" aria-label="Убрать: ${esc(r.it.text)}">×</button>
+    </div>${ui.ask && ui.ask.id === r.id ? askBar(ui.ask) : ''}`;
   };
   const secHTML = TRIP.packing.sections.map((s, si) => {
     const all = refs.filter(r => r.si === si), doneS = all.filter(r => r.it.done).length, open = !ui.closed.has(s.title);
     let body = '';
     if (open) {
+      const base = baseOf(s.title);
+      if (!all.length && base && CAN_WRITE) body += `<div class="pstart"><button class="ls-btn" data-loadbase="${si}">Загрузить базовый список</button><span class="cap">${base.items.length} ${plural(base.items.length, 'пункт', 'пункта', 'пунктов')} — лишнее потом уберёшь</span></div>`;
+      if (!all.length && s.title === 'Одежда и обувь') body += `<p class="cap pnote">Одежда приходит из гардероба: «🧳 В поездку».</p>`;
       const groups = [...new Set(all.map(r => r.it.group || ''))]; if (!groups.length) groups.push('');
       groups.forEach(gr => {
         // вещи одной подгруппы стоят подряд (гардероб присылает их по номерам, вперемешку), так подзаголовки не повторяются;
@@ -378,7 +397,7 @@ function packTab() {
         const inGroup = all.filter(r => (r.it.group || '') === gr), subs = [...new Set(inGroup.map(r => r.it.sub || ''))];
         let subNow = null, rows = '';
         inGroup.filter(visible).sort((a, b) => subs.indexOf(a.it.sub || '') - subs.indexOf(b.it.sub || '') || a.ii - b.ii).forEach(r => {
-          if (SUB_GROUPS.has(gr) && (r.it.sub || '') !== subNow) { subNow = r.it.sub || ''; if (subNow) rows += `<p class="ps">${esc(subNow)}</p>`; }
+          if ((s.title !== 'Одежда и обувь' || SUB_GROUPS.has(gr)) && (r.it.sub || '') !== subNow) { subNow = r.it.sub || ''; if (subNow) rows += `<p class="ps">${esc(subNow)}</p>`; }
           rows += row(r);
         });
         body += `<div class="pgroup">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="добавить вещь" aria-label="Добавить вещь"></label></div>`;
@@ -418,8 +437,53 @@ function hydrateWardrobe() {
     } catch (e) { BLOBS[key] = null; img.remove(); }
   });
 }
+// базовый список: добавить пункт / переименовать; при столкновении правок перечитываем файл и повторяем
+async function baseOp(op, message) {
+  op(BASE); setSave('Сохраняю базовый список…');
+  try {
+    try { await writeFile('packing-base.json', b64enc(JSON.stringify(BASE, null, 1)), message); }
+    catch (e) { if (e.status !== 409 && e.status !== 422) throw e; BASE = await readJSON('packing-base.json'); op(BASE); await writeFile('packing-base.json', b64enc(JSON.stringify(BASE, null, 1)), message); }
+    setSave('Базовый список сохранён');
+  } catch (e) { setSave('Базовый список не сохранился, проверь интернет', true); }
+}
+function baseItem(sec, it, old) { const b = baseOf(sec); return b && b.items.find(x => (it.bid && x.bid === it.bid) || x.text === (old ?? it.text)); }
+function askBar(a) {
+  const q = a.kind === 'add' ? `«${esc(a.text)}» — в базовый список тоже?` : `«${esc(a.old)}» → «${esc(a.text)}» — поменять и в базовом списке?`;
+  return `<div class="ask"><span class="cap">${q}</span><div class="ask-b"><button class="ls-btn" data-ask="base">${a.kind === 'add' ? 'В базовый список' : 'И в базовом'}</button><button class="ls-btn" data-ask="once">${a.kind === 'add' ? 'Только эта поездка' : 'Только здесь'}</button></div></div>`;
+}
+function answerAsk(choice) {
+  const ui = packUI(), a = ui.ask; ui.ask = null;
+  if (!a || choice !== 'base') return render();
+  const r = packRefs().find(x => x.id === a.id); if (!r) return render();
+  if (a.kind === 'add') {
+    const bid = 'b' + Date.now().toString(36); r.it.bid = bid; changed();
+    baseOp(B => { const sec = (B.sections || []).find(x => x.title === r.sec); if (!sec) return;
+      if (sec.items.some(x => x.bid === bid)) return;
+      let at = -1; sec.items.forEach((x, k) => { if ((x.sub || '') === (r.it.sub || '')) at = k; });
+      sec.items.splice(at < 0 ? sec.items.length : at + 1, 0, { bid, text: r.it.text, sub: r.it.sub || '', parent: r.it.parent || '' }); }, `базовый список: + «${r.it.text}»`);
+  } else {
+    baseOp(B => { const sec = (B.sections || []).find(x => x.title === r.sec); const x = sec && sec.items.find(y => (a.bid && y.bid === a.bid) || y.text === a.old); if (x) x.text = a.text; },
+      `базовый список: «${a.old}» → «${a.text}»`);
+  }
+  render();
+}
+function commitEdit(input) {
+  const ui = packUI(), r = packRefs().find(x => x.id === input.dataset.edit); ui.edit = null;
+  const v = input.value.trim();
+  if (r && v && v !== r.it.text) {
+    const old = r.it.text, inBase = baseItem(r.sec, r.it, old);
+    r.it.text = v; changed();
+    if (inBase) ui.ask = { kind: 'rename', id: r.id, old, text: v, bid: inBase.bid };
+  }
+  render();
+}
 function packClick(e) {
   const ui = packUI();
+  const lb = e.target.closest('[data-loadbase]');
+  if (lb) { if (!CAN_WRITE) return true; const sec = TRIP.packing.sections[+lb.dataset.loadbase], base = baseOf(sec.title);
+    sec.items = base.items.map(i => ({ text: i.text, done: false, bag: null, group: '', sub: i.sub || '', parent: i.parent || '', bid: i.bid })); changed(); render(); return true; }
+  const ak = e.target.closest('[data-ask]'); if (ak) { answerAsk(ak.dataset.ask); return true; }
+  if (e.target.closest('[data-edit]')) return true;
   const cp = e.target.closest('[data-copy]');
   if (cp) { const src = TRIPS[cp.dataset.copy]; TRIP.packing.sections = src.packing.sections.map(s => ({ title: s.title, items: s.items.map(i => ({ ...i, done: false })) })); changed(); render(); return true; }
   if (e.target.closest('[data-blank]')) { TRIP.packing.sections = DEFAULT_SECTIONS.map(t => ({ title: t, items: [] })); changed(); render(); return true; }
@@ -434,7 +498,8 @@ function packClick(e) {
   const id = a.closest('[data-id]').dataset.id, r = packRefs().find(x => x.id === id);
   if (a.dataset.act === 'done') { r.it.done = !r.it.done; ui.menu = null; changed(); }
   if (a.dataset.act === 'bag') ui.menu = ui.menu === id ? null : id;
-  if (a.dataset.act === 'del') { TRIP.packing.sections[r.si].items.splice(r.ii, 1); ui.menu = null; changed(); }
+  if (a.dataset.act === 'del') { TRIP.packing.sections[r.si].items.splice(r.ii, 1); ui.menu = null; ui.ask = null; changed(); }   // удаление — только из этой поездки
+  if (a.dataset.act === 'edit') { ui.edit = id; ui.menu = null; ui.ask = null; render(); const inp = document.querySelector(`[data-edit="${id}"]`); if (inp) { inp.focus(); inp.select(); } return true; }
   render(); return true;
 }
 function packAdd(input) {
@@ -443,6 +508,7 @@ function packAdd(input) {
   let at = -1; items.forEach((it, k) => { if ((it.group || '') === group) at = k; });
   const last = items[at];
   items.splice(at + 1, 0, { text, done: false, bag: ui.filter && ui.filter !== '—' ? ui.filter : null, group, sub: last ? last.sub || '' : '', parent: '' });
+  ui.ask = baseOf(TRIP.packing.sections[si].title) ? { kind: 'add', id: `${si}.${at + 1}`, text } : null;
   changed(); render();
   const again = [...document.querySelectorAll('[data-add]')].find(x => x.dataset.add === String(si) && x.dataset.group === group); if (again) again.focus();
 }
@@ -589,12 +655,15 @@ root.addEventListener('click', e => {
   const g = e.target.closest('[data-group]');
   if (g && state.tab === 'Траты') { state.group = g.dataset.group || null; render(); }
 });
+root.addEventListener('focusout', e => { if (e.target.matches && e.target.matches('[data-edit]') && packUI().edit === e.target.dataset.edit) commitEdit(e.target); });
 root.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && e.target.matches && e.target.matches('[data-edit]')) { packUI().edit = null; render(); return; }
   if (e.key !== 'Enter') { const pk = e.target.closest('[data-pick]'); if (pk && e.key === ' ') { e.preventDefault(); pk.click(); } return; }
   const t = e.target;
   if (t.matches('[data-pick]')) { e.preventDefault(); t.click(); return; }
   if (!CAN_WRITE) return;
   if (t.matches('[data-add]')) { e.preventDefault(); packAdd(t); return; }
+  if (t.matches('[data-edit]')) { e.preventDefault(); commitEdit(t); return; }
   if (t.matches('[data-ladd]')) { e.preventDefault(); const v = t.value.trim(); if (!v) return; TRIP[t.dataset.ladd].push({ name: v, city: null, visited: false, liked: false }); changed(); render(); const n = document.querySelector(`[data-ladd="${t.dataset.ladd}"]`); if (n) n.focus(); return; }
   if (t.matches('[data-note]')) { e.preventDefault(); const v = t.value.trim(); if (!v) return; TRIP.notes.push({ section: null, text: v }); changed(); render(); const n = document.querySelector('[data-note]'); if (n) n.focus(); }
 });
