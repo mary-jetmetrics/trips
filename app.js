@@ -11,7 +11,7 @@ const LS = {
 let TOKEN = LS.get('trips-token');
 let CAN_WRITE = LS.get('trips-ro') !== '1';
 let INDEX = [];
-const TRIPS = {}, SHA = {}, BLOBS = {};
+const TRIPS = {}, SHA = {}, BLOBS = {}, ORIG = {};   // ORIG — карточка поездки, как она лежит в репозитории (для слияния правок)
 let TRIP = null, EXP = [], nights = null, total = 0;
 const state = { tab: 'Траты', group: null, sort: 'amount', dir: -1 };
 const root = document.getElementById('root');
@@ -43,13 +43,13 @@ async function gh(path, opts = {}) {
   if (!r.ok) { const e = new Error('GitHub ответил ' + r.status); e.status = r.status; throw e; }
   return r;
 }
-async function readJSON(file) { const j = await (await gh(`/contents/${file}?ref=${BRANCH}`)).json(); SHA[file] = j.sha; return JSON.parse(b64dec(j.content)); }
+async function readJSON(file) { const j = await (await gh(`/contents/${file}?ref=${BRANCH}`, { cache: 'no-store' })).json(); SHA[file] = j.sha; return JSON.parse(b64dec(j.content)); }
 async function writeFile(file, base64, message) {
   const body = { message, content: base64, branch: BRANCH }; if (SHA[file]) body.sha = SHA[file];
   const j = await (await gh(`/contents/${file}`, { method: 'PUT', body: JSON.stringify(body) })).json(); SHA[file] = j.content.sha;
 }
 async function deleteFile(file, message) {
-  if (!SHA[file]) SHA[file] = (await (await gh(`/contents/${file}?ref=${BRANCH}`)).json()).sha;
+  if (!SHA[file]) SHA[file] = (await (await gh(`/contents/${file}?ref=${BRANCH}`, { cache: 'no-store' })).json()).sha;
   await gh(`/contents/${file}`, { method: 'DELETE', body: JSON.stringify({ message, sha: SHA[file], branch: BRANCH }) }); delete SHA[file];
 }
 async function blobURL(file) {
@@ -58,22 +58,47 @@ async function blobURL(file) {
 }
 
 /* ---------- сохранение: правка → через секунду карточка уходит в репозиторий ---------- */
-let saveTimer = null, saving = false, dirty = false;
+let saveTimer = null, saving = false, dirty = false, conflicts = 0;
 function setSave(text, err) { const el = document.getElementById('save'); if (el) { el.textContent = text; el.classList.toggle('err', !!err); } }
 function changed() { if (!CAN_WRITE) return; dirty = true; setSave('Сохраняю…'); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 1000); }
+// карточку правили и здесь, и в другом месте (инбокс, гардероб, другое устройство): берём из обеих версий то, что поменялось;
+// одно и то же поле поменяли обе — побеждает эта; списки разной длины поменяли обе — не сливаем (null)
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+function merge3(base, mine, theirs) {
+  if (same(mine, base)) return theirs;
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  if (Array.isArray(base) && Array.isArray(mine) && Array.isArray(theirs)) {
+    if (mine.length !== base.length || theirs.length !== base.length) throw new Error('списки не сливаются');
+    return base.map((b, i) => merge3(b, mine[i], theirs[i]));
+  }
+  if (isObj(base) && isObj(mine) && isObj(theirs)) {
+    const out = {};
+    new Set([...Object.keys(base), ...Object.keys(mine), ...Object.keys(theirs)]).forEach(k => { const v = merge3(base[k], mine[k], theirs[k]); if (v !== undefined) out[k] = v; });
+    return out;
+  }
+  return mine;
+}
 async function flush() {
   if (saving) { saveTimer = setTimeout(flush, 700); return; }
   if (!dirty || !TRIP) return;
   saving = true; dirty = false;
-  const t = TRIP, file = `trips/${t.id}.json`;
+  const t = TRIP, file = `trips/${t.id}.json`, text = JSON.stringify(t, null, 1);
   try {
-    await writeFile(file, b64enc(JSON.stringify(t, null, 1)), `«${t.title}»: правки из приложения`);
-    setSave('Сохранено');
+    await writeFile(file, b64enc(text), `«${t.title}»: правки из приложения`);
+    ORIG[t.id] = text; conflicts = 0; setSave('Сохранено');
   } catch (e) {
     if (e.status === 403) { CAN_WRITE = false; document.body.classList.add('ro'); setSave('У этого ключа только просмотр — правки не сохраняются', true); }
     else if (e.status === 409 || e.status === 422) {
-      try { TRIPS[t.id] = await readJSON(file); if (TRIP && TRIP.id === t.id) { setTrip(t.id); render(); } setSave('Подтянула правки с другого устройства — повтори последнее действие', true); }
-      catch (e2) { dirty = true; setSave('Не сохранилось, проверь интернет', true); }
+      try {
+        const fresh = await readJSON(file);
+        let merged = null;
+        if (ORIG[t.id] && conflicts < 3) try { merged = merge3(JSON.parse(ORIG[t.id]), JSON.parse(JSON.stringify(TRIPS[t.id])), fresh); } catch (e3) { merged = null; }
+        ORIG[t.id] = JSON.stringify(fresh);
+        TRIPS[t.id] = merged || fresh; if (TRIP && TRIP.id === t.id) { setTrip(t.id); render(); }
+        if (merged) { conflicts++; dirty = true; setSave('Сохраняю…'); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 0); }
+        else { conflicts = 0; setSave('Подтянула правки с другого устройства — повтори последнее действие', true); }
+      } catch (e2) { dirty = true; setSave('Не сохранилось, проверь интернет', true); }
     } else { dirty = true; setSave('Не сохранилось, повторю через 10 секунд', true); saveTimer = setTimeout(flush, 10000); }
   } finally { saving = false; }
 }
@@ -103,7 +128,7 @@ async function boot() {
   root.innerHTML = '<p class="cap">Загружаю поездки…</p>';
   try {
     INDEX = await readJSON('index.json');
-    await Promise.all(INDEX.map(async t => { TRIPS[t.id] = await readJSON(`trips/${t.id}.json`); }));
+    await Promise.all(INDEX.map(async t => { TRIPS[t.id] = await readJSON(`trips/${t.id}.json`); ORIG[t.id] = JSON.stringify(TRIPS[t.id]); }));
     try { BASE = await readJSON('packing-base.json'); } catch (e) { BASE = null; }
   } catch (e) {
     if ([401, 403, 404].includes(e.status)) { LS.del('trips-token'); TOKEN = null; return loginView('Ключ не подошёл. Проверь, что он для репозитория trips-data и не просрочен.'); }
@@ -204,8 +229,8 @@ async function setType(id, type) {
   if (!t || t.type === type) return catalogView();
   t.type = type; catalogView(); setSave('Сохраняю…');
   try {
-    try { await writeFile(file, b64enc(JSON.stringify(t, null, 1)), `«${t.title}»: тип поездки`); }
-    catch (e) { if (e.status !== 409 && e.status !== 422) throw e; const fresh = await readJSON(file); fresh.type = type; TRIPS[id] = fresh; await writeFile(file, b64enc(JSON.stringify(fresh, null, 1)), `«${t.title}»: тип поездки`); }
+    try { await writeFile(file, b64enc(JSON.stringify(t, null, 1)), `«${t.title}»: тип поездки`); ORIG[id] = JSON.stringify(t); }
+    catch (e) { if (e.status !== 409 && e.status !== 422) throw e; const fresh = await readJSON(file); fresh.type = type; TRIPS[id] = fresh; await writeFile(file, b64enc(JSON.stringify(fresh, null, 1)), `«${t.title}»: тип поездки`); ORIG[id] = JSON.stringify(fresh); }
     setSave('Сохранено');
   } catch (e) { setSave('Не сохранилось, проверь интернет', true); }
 }
@@ -228,7 +253,7 @@ async function createTrip(form) {
     const idx = await readJSON('index.json');            // свежий список: вдруг правили с другого устройства
     idx.unshift({ id, title, month, dates: trip.dates });
     await writeFile('index.json', b64enc(JSON.stringify(idx, null, 1)), `«${title}»: в список поездок`);
-    INDEX = idx; TRIPS[id] = trip; NEW_FORM = false; location.hash = `#/trip/${id}`;
+    INDEX = idx; TRIPS[id] = trip; ORIG[id] = JSON.stringify(trip); NEW_FORM = false; location.hash = `#/trip/${id}`;
   } catch (e) { btn.disabled = false; btn.textContent = 'Создать'; fail('Не получилось создать: проверь интернет и нажми ещё раз.'); }
 }
 
@@ -290,8 +315,13 @@ function agoText(t) {   // «закончилась 5 дней назад», «�
 }
 // плашка заведения или места: цвет по оценке (Мария, 12.10.26): от 8 — зелёный, 4–7 — жёлтый, ниже 4 — красный; были без оценки — с галочкой
 const rateTone = r => r >= 8 ? 'good' : r >= 4 ? 'mid' : 'bad';
-const ovChip = x => x.rating ? `<span class="r-${rateTone(x.rating)}" title="${x.rating} из 10">${esc(x.name)}</span>`   // только цвет, без цифры (Мария, 12.10.26)
-  : x.visited ? `<span class="r-seen">✓ ${esc(x.name)}</span>` : `<span>${esc(x.name)}</span>`;
+// плашка еды с заведением в Яндексе — ссылка на него в Яндекс Картах (Мария, 12.10.26); у мест ссылок нет
+const ovChip = x => {
+  const cls = x.rating ? `r-${rateTone(x.rating)}` : x.visited ? 'r-seen' : '';
+  const attrs = (cls ? ` class="${cls}"` : '') + (x.rating ? ` title="${x.rating} из 10"` : '');   // только цвет, без цифры (Мария, 12.10.26)
+  const text = (x.visited && !x.rating ? '✓ ' : '') + esc(x.name);
+  return x.oid && TRIP.food.includes(x) ? `<a href="https://yandex.ru/maps/org/${esc(x.oid)}" target="_blank" rel="noopener"${attrs}>${text}</a>` : `<span${attrs}>${text}</span>`;
+};
 function ovTop3(arr) {
   const rated = arr.filter(x => x.rating).sort((a, b) => b.rating - a.rating).slice(0, 3);
   if (rated.length) return rated;
@@ -647,7 +677,7 @@ function listClick(e) {
     TRIP[kind].splice(i, 1); ui.del = null; ui.rate = null; ui.menu = null; changed(); render(); return true;
   }
   ui.del = null;
-  if (a.dataset.lact === 'visited') { x.visited = !x.visited; ui.rate = x.visited && !x.rating ? i : null; }
+  if (a.dataset.lact === 'visited') { x.visited = !x.visited; if (!x.visited) delete x.rating; ui.rate = x.visited && !x.rating ? i : null; }   // сняли «были» — без оценки
   if (a.dataset.lact === 'rate') { ui.rate = ui.rate === i ? null : i; render(); return true; }
   if (a.dataset.lact === 'setrate') { x.rating = +a.dataset.v; ui.rate = null; }
   if (a.dataset.lact === 'later') { if (x.rating) delete x.rating; ui.rate = null; }
