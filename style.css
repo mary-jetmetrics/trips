@@ -268,3 +268,5 @@ button.tbadge { cursor: pointer; }
 .newtrip .types input:focus-visible + span { box-shadow: var(--focus-ring); }
 .newtrip .acts { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1); }
 .newtrip .err { color: var(--bad); }
+/* скрытое поле формы должно оставаться скрытым: display:grid у полей перебивал атрибут hidden */
+.newtrip [hidden] { display: none !important; }
