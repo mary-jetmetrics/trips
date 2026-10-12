@@ -115,7 +115,8 @@ function route() {
   const m = location.hash.match(/^#\/trip\/([^/]+)(?:\/(.+))?/);
   if (m && TRIPS[m[1]]) {
     if (!TRIP || TRIP.id !== m[1]) { setTrip(m[1]); state.group = null; }
-    state.tab = m[2] ? decodeURIComponent(m[2]) : (ended(TRIP) ? 'Траты' : 'Вещи');
+    const tab = m[2] ? decodeURIComponent(m[2]) : null;
+    state.tab = tab === 'Вещи' ? 'Чемодан' : tab || (ended(TRIP) ? 'Траты' : 'Чемодан');
     tripView();
   } else catalogView();
   window.scrollTo(0, 0);
@@ -230,7 +231,7 @@ async function createTrip(form) {
 }
 
 /* ---------- карточка поездки ---------- */
-const TABS = ['Обзор', 'Вещи', 'Места', 'Еда', 'Траты', 'Фото'];
+const TABS = ['Обзор', 'Чемодан', 'Места', 'Еда', 'Траты', 'Фото'];
 function setTrip(id) {
   TRIP = TRIPS[id];
   TRIP.packing = TRIP.packing || { sections: [] }; TRIP.places = TRIP.places || []; TRIP.food = TRIP.food || []; TRIP.photos = TRIP.photos || []; TRIP.notes = TRIP.notes || [];
@@ -249,9 +250,10 @@ function tripView() {
 function render() {
   const pane = document.getElementById('pane'); if (!pane) return;
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.tab)));
-  const views = { 'Обзор': overviewTab, 'Вещи': packTab, 'Места': () => listTab('places'), 'Еда': () => listTab('food'), 'Траты': spend, 'Фото': () => photosTab() + lightbox() };
+  const views = { 'Обзор': overviewTab, 'Чемодан': packTab, 'Места': () => listTab('places'), 'Еда': () => listTab('food'), 'Траты': spend, 'Фото': () => photosTab() + lightbox() };
   pane.innerHTML = (views[state.tab] || spend)();
   if (state.tab === 'Фото') hydratePhotos();
+  if (state.tab === 'Чемодан') hydrateWardrobe();
 }
 
 /* ---------- Обзор (пока заметки) ---------- */
@@ -332,7 +334,7 @@ function spend() {
   </div>`;
 }
 
-/* ---------- Вещи ---------- */
+/* ---------- Чемодан (бывшая вкладка «Вещи») ---------- */
 const BAGS = [{ name: 'Чемодан', tag: 'ls-tag-lemon', color: 'var(--lemon)' }, { name: 'Ручная кладь', tag: 'ls-tag-sky', color: 'var(--sky)' },
   { name: 'На себя', tag: 'ls-tag-gray', color: 'var(--gray)' }, { name: 'Мини-сумка', tag: '', color: 'var(--pink)' }];
 const DEFAULT_SECTIONS = ['Одежда и обувь', 'Уход и макияж', 'Другое', 'Супер-важное (документы и др)'];
@@ -359,7 +361,7 @@ function packTab() {
     const menu = ui.menu === r.id ? `<div class="bagmenu" role="menu">${BAGS.map(x => `<button role="menuitem" data-setbag="${esc(x.name)}"><span class="ls-tag ${x.tag}">${esc(x.name)}</span></button>`).join('')}${b ? '<button role="menuitem" data-setbag="" class="cap">убрать место</button>' : ''}</div>` : '';
     return `<div class="pi${r.it.done ? ' done' : ''}${r.it.parent ? ' child' : ''}" data-id="${r.id}">
       <button class="box" data-act="done" aria-pressed="${!!r.it.done}" aria-label="${r.it.done ? 'Снять отметку' : 'Отметить'}: ${esc(r.it.text)}">${r.it.done ? '✓' : ''}</button>
-      <span class="tx" data-act="done">${esc(r.it.text)}</span>
+      <span class="tx" data-act="done">${r.it.wardrobe ? wardrobeThumb(r.it.wardrobe) : ''}<span>${esc(r.it.text)}</span></span>
       <span class="bagwrap"><button class="ls-tag ${b ? b.tag : 'nobag'}" data-act="bag" aria-haspopup="menu" aria-expanded="${ui.menu === r.id}">${b ? esc(b.name) : 'куда?'}</button>${menu}</span>
       <button class="x w-only" data-act="del" title="Удалить" aria-label="Удалить: ${esc(r.it.text)}">×</button>
     </div>`;
@@ -370,8 +372,9 @@ function packTab() {
     if (open) {
       const groups = [...new Set(all.map(r => r.it.group || ''))]; if (!groups.length) groups.push('');
       groups.forEach(gr => {
-        let subNow = null, rows = '';
-        all.filter(r => (r.it.group || '') === gr && visible(r)).forEach(r => { if ((r.it.sub || '') !== subNow) { subNow = r.it.sub || ''; if (subNow) rows += `<p class="ps">${esc(subNow)}</p>`; } rows += row(r); });
+        // подзаголовков подгрупп нет, но вещи одной подгруппы стоят подряд: гардероб присылает их по номерам, вперемешку
+        const inGroup = all.filter(r => (r.it.group || '') === gr), subs = [...new Set(inGroup.map(r => r.it.sub || ''))];
+        const rows = inGroup.filter(visible).sort((a, b) => subs.indexOf(a.it.sub || '') - subs.indexOf(b.it.sub || '') || a.ii - b.ii).map(row).join('');
         body += `<div class="pgroup">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="добавить вещь" aria-label="Добавить вещь"></label></div>`;
       });
     }
@@ -386,6 +389,28 @@ function packTab() {
     <div class="frow"><div class="filters">${chip(null, 'Все')}${BAGS.map(b => chip(b.name, b.name, b.color)).join('')}${chip('—', 'Без места', null)}</div><button class="hidelink" data-hide aria-pressed="${ui.hideDone}">${ui.hideDone ? 'Показать собранное' : 'Скрыть собранное'}</button></div>
     <div class="psecs">${secHTML}</div>
   </div>`;
+}
+// фото вещи — из закрытого репозитория гардероба тем же ключом; нет доступа или фото — картинка просто не показывается
+const WARDROBE_API = `https://api.github.com/repos/${OWNER}/wardrobe-data/contents/`;
+function wardrobeThumb(n) {
+  const file = `thumbs/${String(n).padStart(3, '0')}.jpg`, url = BLOBS['w:' + file];
+  if (url === null) return '';
+  return `<img class="wthumb" ${typeof url === 'string' ? `src="${url}"` : `data-wfile="${file}"`} alt="" aria-hidden="true">`;
+}
+function hydrateWardrobe() {
+  document.querySelectorAll('img[data-wfile]').forEach(async img => {
+    const file = img.dataset.wfile, key = 'w:' + file;
+    try {
+      if (BLOBS[key] === undefined) {
+        BLOBS[key] = (async () => {
+          const r = await fetch(WARDROBE_API + file + `?ref=${BRANCH}`, { headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/vnd.github.raw' } });
+          if (!r.ok) throw new Error(r.status);
+          return URL.createObjectURL(await r.blob());
+        })();
+      }
+      const url = await BLOBS[key]; BLOBS[key] = url; img.src = url;
+    } catch (e) { BLOBS[key] = null; img.remove(); }
+  });
 }
 function packClick(e) {
   const ui = packUI();
@@ -534,7 +559,7 @@ root.addEventListener('click', e => {
   if (e.target.closest('#logout')) { LS.del('trips-token'); LS.del('trips-ro'); TOKEN = null; location.hash = ''; loginView(); return; }
   const tb = e.target.closest('[data-tab]'); if (tb) { history.replaceState(null, '', `#/trip/${TRIP.id}/${encodeURIComponent(tb.dataset.tab)}`); state.tab = tb.dataset.tab; render(); return; }
   if (!TRIP) return;
-  if (state.tab === 'Вещи' && packClick(e)) return;
+  if (state.tab === 'Чемодан' && packClick(e)) return;
   if ((state.tab === 'Места' || state.tab === 'Еда') && listClick(e)) return;
   if (state.tab === 'Фото') {
     const ui = phUI(), o = e.target.closest('[data-ph]');
