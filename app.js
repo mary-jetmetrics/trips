@@ -122,20 +122,111 @@ function route() {
 }
 
 /* ---------- каталог ---------- */
-// предстоящие — ещё не закончились (и та, что идёт сейчас), ближняя сверху; архив — закончившиеся, свежие сверху
+// главная — лента по годам (Мария, 12.10.26): значок типа на линии, метка «сегодня» между будущим и прошлым,
+// у предстоящих — даты, ночи, «через N дней»; у прошедших — даты, ночи, деньги и стопка из трёх фото справа
+const TYPES = {
+  beach: ['пляж', 'var(--lemon)', '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="3.2"/><path d="M12 2.8 V4 M5.8 9 H7 M17 9 H18.2 M7.6 4.6 L8.4 5.4 M16.4 4.6 L15.6 5.4"/><path d="M3 16 q2.25 -2.2 4.5 0 t4.5 0 t4.5 0 t4.5 0 M5 20 q1.75 -1.6 3.5 0 t3.5 0 t3.5 0 t3.5 0"/></svg>'],
+  city: ['город', 'var(--lavender)', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20 H21 M5 20 V10 H10 V20 M10 20 V5 H17 V20 M17 20 V12 H20 V20"/><path d="M12.5 8.5 H14.5 M12.5 11.5 H14.5 M12.5 14.5 H14.5 M7 13 H8 M7 16 H8"/></svg>'],
+  nature: ['природа', 'var(--salad)', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 19.5 L9 9 L13 15.5 L15.5 12 L21.5 19.5 Z"/><path d="M7.4 11.6 L9 12.6 L10.4 11.4"/><circle cx="17.5" cy="6" r="2"/></svg>'],
+};
+const typeOf = t => TYPES[t.type] ? t.type : 'city';
 const isPast = t => t.dates ? ended(t) : (t.month || '') < new Date().toISOString().slice(0, 7);
-const tripRow = t => `<button class="trip-row" data-go="${esc(t.id)}"><b>${esc(t.title)}</b><span class="cap">${esc(when(TRIPS[t.id]))}</span></button>`;
-const tripGroup = (title, list, empty) => (list.length || empty) ? `<section class="section"><h2 class="ls-h">${title}</h2>
-    ${list.length ? `<div class="ls-block trips">${list.map(tripRow).join('')}</div>` : `<p class="cap">${empty}</p>`}</section>` : '';
+const startOf = t => (t.dates ? t.dates.start : t.month) || '';
+function countdown(t) {
+  if (!t.dates) return 'даты уточняются';
+  const a = new Date(t.dates.start + 'T00:00:00'), b = new Date(t.dates.end + 'T00:00:00'), now = today();
+  if (now >= a && now <= b) { const k = Math.round((now - a) / 864e5) + 1; return `идёт сейчас · день ${k} из ${nightsOf(t) + 1}`; }
+  const n = Math.round((a - now) / 864e5);
+  return n === 0 ? 'сегодня' : n === 1 ? 'завтра' : `через ${n} ${plural(n, 'день', 'дня', 'дней')}`;
+}
+let TYPE_MENU = null, NEW_FORM = false;   // у какой поездки открыт выбор типа; открыта ли форма новой поездки
+function typeBadge(t) {
+  const [name, color, svg] = TYPES[typeOf(t)];
+  const menu = TYPE_MENU === t.id ? `<div class="tmenu" role="menu">${Object.entries(TYPES).map(([k, [n, c, i]]) =>
+    `<button role="menuitemradio" aria-checked="${k === typeOf(t)}" data-settype="${k}" data-id="${esc(t.id)}"><span class="tbadge" style="--cb:${c}">${i}</span>${n}</button>`).join('')}</div>` : '';
+  return CAN_WRITE
+    ? `<button class="tbadge on-line" style="--cb:${color}" data-typemenu="${esc(t.id)}" aria-haspopup="menu" aria-expanded="${TYPE_MENU === t.id}" title="${name} — нажми, чтобы поменять">${svg}</button>${menu}`
+    : `<span class="tbadge on-line" style="--cb:${color}" title="${name}">${svg}</span>`;
+}
+function photoStack(t) {
+  const P = t.photos || []; if (!P.length) return '';
+  const pick = P.length <= 3 ? P : [P[0], P[Math.floor(P.length / 2)], P[P.length - 1]];
+  return `<span class="stack" aria-hidden="true">${pick.map(p => `<img data-file="${esc(p.file)}" alt="">`).join('')}</span>`;
+}
+const spentOf = t => (t.expenses || []).reduce((s, x) => s + (x.amount || 0), 0);
+function tripItem(t) {
+  const past = isPast(t), spent = spentOf(t);
+  return `<div class="it${past ? '' : ' soon'}">${typeBadge(t)}
+    <button class="it-go" data-go="${esc(t.id)}"><span class="txt"><b>${esc(t.title)}</b><span class="cap">${esc(when(t))}</span>
+      ${past ? (spent ? `<span class="cap">${fmt(spent)}</span>` : '') : `<span><span class="ls-tag">${countdown(t)}</span></span>`}</span>${past ? photoStack(t) : ''}</button></div>`;
+}
+function newTripForm() {
+  const m = new Date().toISOString().slice(0, 7);
+  return `<form class="ls-block newtrip" id="newtrip">
+    <h2 class="ls-h">Новая поездка</h2>
+    <label class="f cap">Название<input name="title" required placeholder="Например, Фукуок" autocomplete="off"></label>
+    <span class="cap">Какая поездка</span>
+    <div class="types">${Object.entries(TYPES).map(([k, [n, c, i]], j) => `<label><input type="radio" name="type" value="${k}"${j === 0 ? ' checked' : ''}><span><span class="tbadge" style="--cb:${c}">${i}</span>${n}</span></label>`).join('')}</div>
+    <div class="two" id="nt-dates"><label class="f cap">Туда<input type="date" name="start"></label><label class="f cap">Обратно<input type="date" name="end"></label></div>
+    <label class="f cap" id="nt-month" hidden>Месяц<input type="month" name="month" value="${m}"></label>
+    <label class="chk"><input type="checkbox" name="nodates" id="nt-nodates"> Даты пока не знаю</label>
+    <p class="cap">Чемодан, места, еда и траты появятся пустыми — заполнишь внутри.</p>
+    <p class="cap err" id="nt-err" hidden></p>
+    <div class="acts"><button class="ls-btn ls-btn-main" type="submit">Создать</button><button class="ls-btn" type="button" data-newtrip="close">Отмена</button></div>
+  </form>`;
+}
 function catalogView() {
   TRIP = null;
-  const startOf = t => (TRIPS[t.id].dates ? TRIPS[t.id].dates.start : TRIPS[t.id].month) || '';
-  const soon = INDEX.filter(t => !isPast(TRIPS[t.id])).sort((a, b) => startOf(a).localeCompare(startOf(b)));
-  const past = INDEX.filter(t => isPast(TRIPS[t.id])).sort((a, b) => startOf(b).localeCompare(startOf(a)));
-  root.innerHTML = `<header class="head"><div class="topbar"><h1 class="ls-title">Поездки</h1><button class="back" id="logout">Выйти</button></div>${WAVE}
-    <p class="cap" style="margin:0">${INDEX.length} ${plural(INDEX.length, 'поездка', 'поездки', 'поездок')}${CAN_WRITE ? '' : ' · только просмотр'}</p></header>
-    ${tripGroup('Предстоящие', soon, 'Предстоящих поездок пока нет.')}${tripGroup('Архив', past)}
-    <p class="cap">Каталог оформим позже, когда соберём обзор поездки.</p>`;
+  const all = INDEX.map(x => TRIPS[x.id]).filter(Boolean).sort((a, b) => startOf(b).localeCompare(startOf(a)));
+  const now = today();
+  const mark = `<div class="today"><svg viewBox="0 0 60 8" aria-hidden="true"><path d="M1 4 Q 4 0 7 4 T 13 4 T 19 4 T 25 4 T 31 4 T 37 4 T 43 4 T 49 4 T 55 4"/></svg>сегодня, ${now.getDate()} ${MON_GEN[now.getMonth()]}</div>`;
+  let line = '', year = null, marked = false;
+  for (const t of all) {
+    if (isPast(t) && !marked) { line += mark; marked = true; }
+    const y = startOf(t).slice(0, 4);
+    if (y !== year) { year = y; line += `<p class="yr">${y}</p>`; }
+    line += tripItem(t);
+  }
+  if (!marked) line += mark;
+  root.innerHTML = `<header class="head"><div class="topbar"><h1 class="ls-title">Поездки</h1>
+      <div class="topacts"><button class="ls-btn ls-btn-main w-only" data-newtrip="open">+ Новая поездка</button><button class="back" id="logout">Выйти</button></div></div>${WAVE}
+    <p class="cap" style="margin:0">${INDEX.length} ${plural(INDEX.length, 'поездка', 'поездки', 'поездок')}${CAN_WRITE ? '' : ' · только просмотр'} <span class="save" id="save"></span></p></header>
+    ${NEW_FORM && CAN_WRITE ? newTripForm() : ''}
+    <div class="tl">${line}</div>`;
+  hydratePhotos();
+}
+// тип поездки меняется прямо на главной: значок → меню из трёх → сразу в репозиторий
+async function setType(id, type) {
+  const t = TRIPS[id], file = `trips/${id}.json`; TYPE_MENU = null;
+  if (!t || t.type === type) return catalogView();
+  t.type = type; catalogView(); setSave('Сохраняю…');
+  try {
+    try { await writeFile(file, b64enc(JSON.stringify(t, null, 1)), `«${t.title}»: тип поездки`); }
+    catch (e) { if (e.status !== 409 && e.status !== 422) throw e; const fresh = await readJSON(file); fresh.type = type; TRIPS[id] = fresh; await writeFile(file, b64enc(JSON.stringify(fresh, null, 1)), `«${t.title}»: тип поездки`); }
+    setSave('Сохранено');
+  } catch (e) { setSave('Не сохранилось, проверь интернет', true); }
+}
+const TR = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };
+const slug = s => s.toLowerCase().split('').map(c => TR[c] ?? c).join('').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+async function createTrip(form) {
+  const f = new FormData(form), err = document.getElementById('nt-err');
+  const title = String(f.get('title') || '').trim(), nodates = !!f.get('nodates'), start = f.get('start'), end = f.get('end');
+  const fail = m => { err.textContent = m; err.hidden = false; };
+  if (!title) return fail('Напиши название.');
+  if (!nodates && (!start || !end)) return fail('Укажи даты туда и обратно или отметь «Даты пока не знаю».');
+  if (!nodates && end < start) return fail('Дата «обратно» раньше, чем «туда».');
+  const month = nodates ? String(f.get('month') || new Date().toISOString().slice(0, 7)) : start.slice(0, 7);
+  let id = `${month}-${slug(title) || 'poezdka'}`; for (let k = 2; TRIPS[id]; k++) id = `${month}-${slug(title) || 'poezdka'}-${k}`;
+  const trip = { id, title, type: f.get('type') || 'city', month, dates: nodates ? null : { start, end }, transport: [], from: 'Пермь', itinerary: [],
+    expenses: [], packing: { sections: [{ title: 'Одежда и обувь', items: [] }] }, places: [], food: [], lists: [], notes: [], photos: [] };
+  const btn = form.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Создаю…';
+  try {
+    await writeFile(`trips/${id}.json`, b64enc(JSON.stringify(trip, null, 1)), `«${title}»: новая поездка`);
+    const idx = await readJSON('index.json');            // свежий список: вдруг правили с другого устройства
+    idx.unshift({ id, title, month, dates: trip.dates });
+    await writeFile('index.json', b64enc(JSON.stringify(idx, null, 1)), `«${title}»: в список поездок`);
+    INDEX = idx; TRIPS[id] = trip; NEW_FORM = false; location.hash = `#/trip/${id}`;
+  } catch (e) { btn.disabled = false; btn.textContent = 'Создать'; fail('Не получилось создать: проверь интернет и нажми ещё раз.'); }
 }
 
 /* ---------- карточка поездки ---------- */
@@ -436,6 +527,10 @@ async function addPhotos(files) {
 /* ---------- события ---------- */
 root.addEventListener('click', e => {
   const go = e.target.closest('[data-go]'); if (go) { location.hash = go.dataset.go ? `#/trip/${go.dataset.go}` : ''; return; }
+  const nt = e.target.closest('[data-newtrip]'); if (nt) { NEW_FORM = nt.dataset.newtrip === 'open'; TYPE_MENU = null; catalogView(); if (NEW_FORM) document.querySelector('#newtrip [name=title]').focus(); return; }
+  const tm = e.target.closest('[data-typemenu]'); if (tm) { TYPE_MENU = TYPE_MENU === tm.dataset.typemenu ? null : tm.dataset.typemenu; catalogView(); return; }
+  const st = e.target.closest('[data-settype]'); if (st) { setType(st.dataset.id, st.dataset.settype); return; }
+  if (!TRIP && TYPE_MENU) { TYPE_MENU = null; catalogView(); return; }
   if (e.target.closest('#logout')) { LS.del('trips-token'); LS.del('trips-ro'); TOKEN = null; location.hash = ''; loginView(); return; }
   const tb = e.target.closest('[data-tab]'); if (tb) { history.replaceState(null, '', `#/trip/${TRIP.id}/${encodeURIComponent(tb.dataset.tab)}`); state.tab = tb.dataset.tab; render(); return; }
   if (!TRIP) return;
@@ -472,7 +567,9 @@ root.addEventListener('keydown', e => {
   if (t.matches('[data-ladd]')) { e.preventDefault(); const v = t.value.trim(); if (!v) return; TRIP[t.dataset.ladd].push({ name: v, city: null, visited: false, liked: false }); changed(); render(); const n = document.querySelector(`[data-ladd="${t.dataset.ladd}"]`); if (n) n.focus(); return; }
   if (t.matches('[data-note]')) { e.preventDefault(); const v = t.value.trim(); if (!v) return; TRIP.notes.push({ section: null, text: v }); changed(); render(); const n = document.querySelector('[data-note]'); if (n) n.focus(); }
 });
-root.addEventListener('change', e => { if ((e.target.id === 'phfile' || e.target.id === 'phfile2') && e.target.files.length && CAN_WRITE) addPhotos([...e.target.files]); });
+root.addEventListener('submit', e => { if (e.target.id === 'newtrip') { e.preventDefault(); createTrip(e.target); } });
+root.addEventListener('change', e => {
+  if (e.target.id === 'nt-nodates') { document.getElementById('nt-dates').hidden = e.target.checked; document.getElementById('nt-month').hidden = !e.target.checked; return; } if ((e.target.id === 'phfile' || e.target.id === 'phfile2') && e.target.files.length && CAN_WRITE) addPhotos([...e.target.files]); });
 document.addEventListener('keydown', e => {
   if (!TRIP || state.tab !== 'Фото' || phUI().open === null || e.target.id === 'phcap') return;
   const map = { Escape: 'close', ArrowLeft: 'prev', ArrowRight: 'next' }, b = map[e.key] && document.querySelector(`[data-lb="${map[e.key]}"]`); if (b) b.click();

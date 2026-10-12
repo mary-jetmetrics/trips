@@ -116,6 +116,9 @@ button { font: inherit; color: inherit; }
 .ptools { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .ls-btn { font: inherit; font-size: 14px; line-height: 20px; padding: 5px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); cursor: pointer; }
 .ls-btn[aria-pressed="true"] { border-color: var(--ink); background: var(--surface); }
+/* главная кнопка — после .ls-btn, иначе та перекрывала заливку и «главные» выходили белыми */
+.ls-btn.ls-btn-main { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.lb .ls-btn.ls-btn-main { background: var(--bg); color: var(--ink); border-color: var(--bg); }
 .psecs { display: grid; gap: var(--space-3); }
 .psec { padding: 0; }
 .psec-h { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 0; background: none; cursor: pointer; text-align: left; }
@@ -198,11 +201,6 @@ button { font: inherit; color: inherit; }
 .save.err { color: var(--bad); font-weight: 600; }
 .login { max-width: 460px; display: grid; gap: var(--space-3); }
 .login input { font: inherit; font-size: 15px; padding: 8px 10px; border: 1px solid var(--ink-muted); border-radius: var(--radius-sm); }
-.trips { display: grid; }
-.trip-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: baseline; padding: var(--space-3) 0; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; width: 100%; }
-.trip-row:last-child { border-bottom: 0; }
-.trip-row b { font-family: var(--font-display); font-weight: 400; font-size: 22px; line-height: 28px; }
-.trip-row:hover b { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 4px; }
 body.ro .w-only { display: none !important; }
 
 /* места и еда */
@@ -221,5 +219,52 @@ body.ro .w-only { display: none !important; }
 .notes p { margin: 0 0 var(--space-2); max-width: 65ch; }
 .notes h3 { margin: var(--space-3) 0 var(--space-1); font-family: var(--font-display); font-weight: 400; font-size: 18px; line-height: 24px; }
 .starter { display: grid; gap: var(--space-2); justify-items: start; }
-/* на телефоне дата под названием: в строку не помещается, налезала на название */
-@media (max-width: 560px) { .trip-row { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* ---------- главная: лента по годам ---------- */
+.topacts { display: flex; align-items: center; gap: var(--space-4); margin-left: auto; }
+.topbar { flex-wrap: wrap; }
+.tl { position: relative; display: grid; padding-left: 30px; }
+.tl::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 1px; background: var(--line-strong); }
+.tl .yr { font-family: var(--font-display); font-size: 22px; line-height: 28px; margin: var(--space-4) 0 var(--space-1); }
+.tl .yr:first-child { margin-top: 0; }
+.tl .it { position: relative; }
+.it-go { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: center; width: 100%; padding: 10px 0 14px; border: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.it-go .txt { display: grid; gap: 2px; min-width: 0; }
+.it-go b { font-family: var(--font-display); font-weight: 400; font-size: 20px; line-height: 26px; }
+.it-go:hover b { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 4px; }
+/* значок типа поездки: рисунок на своей пастели; на линии он вместо точки */
+.tbadge { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: var(--cb); border: 0; padding: 0; flex: none; box-shadow: inset 0 0 0 1px rgba(33, 28, 28, .08); }
+.tbadge svg { width: 18px; height: 18px; fill: none; stroke: var(--ink); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.tbadge.on-line { position: absolute; left: -36px; top: 10px; z-index: 1; }
+button.tbadge { cursor: pointer; }
+.it.soon .tbadge.on-line { box-shadow: 0 0 0 2px var(--ink); }
+.tmenu { position: absolute; left: -36px; top: 44px; z-index: 3; display: grid; gap: 2px; padding: var(--space-1); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 6px 20px rgba(33, 28, 28, .12); }
+.tmenu button { display: flex; align-items: center; gap: var(--space-2); padding: 4px 12px 4px 4px; border: 0; border-radius: var(--radius-sm); background: none; font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; text-align: left; }
+.tmenu button:hover, .tmenu button[aria-checked="true"] { background: var(--surface); }
+.tmenu .tbadge { width: 24px; height: 24px; } .tmenu .tbadge svg { width: 16px; height: 16px; }
+/* метка «сегодня» — розовая волна, отделяет будущее от прошлого */
+.tl .today { position: relative; display: flex; align-items: center; gap: var(--space-2); margin: var(--space-1) 0; font-size: 12.5px; line-height: 16px; }
+.tl .today::before { content: ""; position: absolute; left: -30px; width: 17px; height: 2px; background: var(--accent); }
+.tl .today svg { width: 60px; height: 8px; }
+.tl .today path { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+/* стопка фото справа от прошедшей поездки */
+.stack { position: relative; width: 84px; height: 64px; flex: none; }
+.stack img { position: absolute; top: 6px; left: 14px; width: 52px; height: 52px; object-fit: cover; border: 3px solid #fff; border-radius: 3px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 2px 6px rgba(33, 28, 28, .10); }
+.stack img:nth-child(1) { transform: rotate(-9deg) translateX(-10px); }
+.stack img:nth-child(2) { transform: rotate(6deg) translateX(8px); }
+.stack img:nth-child(3) { transform: rotate(-2deg); }
+/* форма новой поездки */
+.newtrip { display: grid; gap: var(--space-2); max-width: 560px; }
+.newtrip label.f { display: grid; gap: var(--space-1); }
+.newtrip input[name=title], .newtrip input[type=date], .newtrip input[type=month] { min-height: 40px; padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--bg); font: inherit; font-size: 16px; color: var(--ink); width: 100%; }
+.newtrip .two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.newtrip .chk { display: flex; align-items: center; gap: var(--space-2); font-size: 14px; }
+.newtrip .chk input { accent-color: var(--ink); width: 16px; height: 16px; margin: 0; }
+.newtrip .types { display: flex; gap: 6px; flex-wrap: wrap; }
+.newtrip .types label { position: relative; }
+.newtrip .types input { position: absolute; opacity: 0; pointer-events: none; }
+.newtrip .types label > span { display: inline-flex; align-items: center; gap: var(--space-2); padding: 4px 12px 4px 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 14px; color: var(--ink-muted); cursor: pointer; }
+.newtrip .types input:checked + span { border-color: var(--ink); color: var(--ink); background: var(--surface); }
+.newtrip .types input:focus-visible + span { box-shadow: var(--focus-ring); }
+.newtrip .acts { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1); }
+.newtrip .err { color: var(--bad); }
