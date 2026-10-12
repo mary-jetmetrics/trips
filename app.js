@@ -122,11 +122,19 @@ function route() {
 }
 
 /* ---------- каталог ---------- */
+// предстоящие — ещё не закончились (и та, что идёт сейчас), ближняя сверху; архив — закончившиеся, свежие сверху
+const isPast = t => t.dates ? ended(t) : (t.month || '') < new Date().toISOString().slice(0, 7);
+const tripRow = t => `<button class="trip-row" data-go="${esc(t.id)}"><b>${esc(t.title)}</b><span class="cap">${esc(when(TRIPS[t.id]))}</span></button>`;
+const tripGroup = (title, list, empty) => (list.length || empty) ? `<section class="section"><h2 class="ls-h">${title}</h2>
+    ${list.length ? `<div class="ls-block trips">${list.map(tripRow).join('')}</div>` : `<p class="cap">${empty}</p>`}</section>` : '';
 function catalogView() {
   TRIP = null;
+  const startOf = t => (TRIPS[t.id].dates ? TRIPS[t.id].dates.start : TRIPS[t.id].month) || '';
+  const soon = INDEX.filter(t => !isPast(TRIPS[t.id])).sort((a, b) => startOf(a).localeCompare(startOf(b)));
+  const past = INDEX.filter(t => isPast(TRIPS[t.id])).sort((a, b) => startOf(b).localeCompare(startOf(a)));
   root.innerHTML = `<header class="head"><div class="topbar"><h1 class="ls-title">Поездки</h1><button class="back" id="logout">Выйти</button></div>${WAVE}
     <p class="cap" style="margin:0">${INDEX.length} ${plural(INDEX.length, 'поездка', 'поездки', 'поездок')}${CAN_WRITE ? '' : ' · только просмотр'}</p></header>
-    <div class="ls-block trips">${INDEX.map(t => `<button class="trip-row" data-go="${esc(t.id)}"><b>${esc(t.title)}</b><span class="cap">${esc(when(TRIPS[t.id]))}</span></button>`).join('')}</div>
+    ${tripGroup('Предстоящие', soon, 'Предстоящих поездок пока нет.')}${tripGroup('Архив', past)}
     <p class="cap">Каталог оформим позже, когда соберём обзор поездки.</p>`;
 }
 
@@ -470,4 +478,18 @@ document.addEventListener('keydown', e => {
   const map = { Escape: 'close', ArrowLeft: 'prev', ArrowRight: 'next' }, b = map[e.key] && document.querySelector(`[data-lb="${map[e.key]}"]`); if (b) b.click();
 });
 
+// свежая версия: GitHub Pages разрешает браузеру 10 минут держать старую страницу. Сверяем номер версии
+// в свежем index.html с загруженным и при расхождении перезагружаем — один раз на версию (как в «Уборке»)
+const MY_V = (document.querySelector('script[src*="app.js?v="]') || { src: '' }).src.split('v=')[1] || '';
+async function checkFresh() {
+  try {
+    const html = await (await fetch(`${location.pathname}?fresh=${Date.now()}`, { cache: 'no-store' })).text();
+    const v = (html.match(/app\.js\?v=([\w-]+)/) || [])[1];
+    if (!v || !MY_V || v === MY_V) return;
+    if (sessionStorage.getItem('trips-reloaded') === v) return;
+    sessionStorage.setItem('trips-reloaded', v); location.reload();
+  } catch (e) { /* без сети — в другой раз */ }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkFresh(); });
+checkFresh();
 boot();

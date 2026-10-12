@@ -221,3 +221,5 @@ body.ro .w-only { display: none !important; }
 .notes p { margin: 0 0 var(--space-2); max-width: 65ch; }
 .notes h3 { margin: var(--space-3) 0 var(--space-1); font-family: var(--font-display); font-weight: 400; font-size: 18px; line-height: 24px; }
 .starter { display: grid; gap: var(--space-2); justify-items: start; }
+/* на телефоне дата под названием: в строку не помещается, налезала на название */
+@media (max-width: 560px) { .trip-row { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
