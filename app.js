@@ -392,12 +392,19 @@ function packTab() {
       if (!all.length && s.title === 'Одежда и обувь') body += `<p class="cap pnote">Одежда приходит из гардероба: «🧳 В поездку».</p>`;
       const groups = [...new Set(all.map(r => r.it.group || ''))]; if (!groups.length) groups.push('');
       groups.forEach(gr => {
-        // вещи одной подгруппы стоят подряд (гардероб присылает их по номерам, вперемешку), так подзаголовки не повторяются;
-        // подзаголовки — только в «Верхе», «Низе» и «Аксессуарах» (Мария, 12.10.26)
+        // вещи одной подгруппы стоят подряд (гардероб присылает их по номерам, вперемешку), так подзаголовки не повторяются.
+        // Одежда (Мария, 12.10.26): подзаголовки только в «Верхе», «Низе» и «Аксессуарах» и только у подгрупп из двух вещей и больше;
+        // одиночки — в конце категории под «Другое»; нет ни одной подгруппы из двух — подзаголовков нет совсем. В остальных разделах — всегда.
         const inGroup = all.filter(r => (r.it.group || '') === gr), subs = [...new Set(inGroup.map(r => r.it.sub || ''))];
+        const cnt = {}; inGroup.forEach(r => { const k = r.it.sub || ''; cnt[k] = (cnt[k] || 0) + 1; });
+        const clothes = s.title === 'Одежда и обувь';
+        const useSubs = !clothes || (SUB_GROUPS.has(gr) && subs.some(k => k && cnt[k] >= 2));
+        const lone = r => clothes && useSubs && cnt[r.it.sub || ''] < 2;
+        const order = r => lone(r) ? subs.length : subs.indexOf(r.it.sub || '');
         let subNow = null, rows = '';
-        inGroup.filter(visible).sort((a, b) => subs.indexOf(a.it.sub || '') - subs.indexOf(b.it.sub || '') || a.ii - b.ii).forEach(r => {
-          if ((s.title !== 'Одежда и обувь' || SUB_GROUPS.has(gr)) && (r.it.sub || '') !== subNow) { subNow = r.it.sub || ''; if (subNow) rows += `<p class="ps">${esc(subNow)}</p>`; }
+        inGroup.filter(visible).sort((a, b) => order(a) - order(b) || subs.indexOf(a.it.sub || '') - subs.indexOf(b.it.sub || '') || a.ii - b.ii).forEach(r => {
+          const head = lone(r) ? 'Другое' : (r.it.sub || '');
+          if (useSubs && head !== subNow) { subNow = head; if (head) rows += `<p class="ps">${esc(head)}</p>`; }
           rows += row(r);
         });
         body += `<div class="pgroup">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="добавить вещь" aria-label="Добавить вещь"></label></div>`;
