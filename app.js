@@ -660,7 +660,7 @@ function listTab(kind) {
       ${lists.length ? `<p class="cap lists" style="margin:0">Из Яндекс Карт: ${lists.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a>`).join(' ')}</p>` : ''}
       <div class="filters">${chip(null, 'Все', arr.length)}${chip('yes', 'Были', visited)}${chip('no', 'Не были', arr.length - visited)}</div>
       <div class="ls-block">${shown.map(row).join('') || '<p class="cap" style="margin:0">Здесь пусто.</p>'}
-        <label class="add w-only"><span aria-hidden="true">+</span><input data-ladd="${kind}" placeholder="${kind === 'food' ? 'добавить заведение или блюдо' : 'добавить место'}" aria-label="Добавить"></label></div>
+        <label class="add w-only"><span aria-hidden="true">+</span><input data-ladd="${kind}" placeholder="${kind === 'food' ? 'добавить заведение' : 'добавить место'}" aria-label="Добавить"></label></div>
     </section>
   </div>`;
 }
