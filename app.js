@@ -573,13 +573,13 @@ function answerAsk(choice) {
     baseOp(B => { const sec = (B.sections || []).find(x => x.title === r.sec); if (!sec) return;
       if (sec.items.some(x => x.bid === bid)) return;
       let at = -1; sec.items.forEach((x, k) => { if ((x.sub || '') === (r.it.sub || '')) at = k; });
-      sec.items.splice(at < 0 ? sec.items.length : at + 1, 0, { bid, text: r.it.text, sub: r.it.sub || '', parent: r.it.parent || '' }); }, `базовый список: + «${r.it.text}»`);
+      sec.items.splice(at < 0 ? sec.items.length : at + 1, 0, { bid, text: r.it.text, sub: r.it.sub || '', parent: r.it.parent || '', ...(r.it.group ? { group: r.it.group } : {}) }); }, `базовый список: + «${r.it.text}»`);
   } else if (a.kind === 'move') {
     // в базовом встаёт за тем же соседом, что и в поездке (сосед выше, иначе ниже — из тех, что есть в базовом)
     const items = TRIP.packing.sections[r.si].items, above = items.slice(0, r.ii).reverse().filter(x => x.bid), below = items.slice(r.ii + 1).filter(x => x.bid);
     baseOp(B => { const from = (B.sections || []).find(x => x.title === a.from), to = (B.sections || []).find(x => x.title === a.to); if (!from || !to) return;
       const i = from.items.findIndex(x => x.bid === a.bid); if (i < 0) return;
-      const [x] = from.items.splice(i, 1); x.parent = r.it.parent || ''; x.sub = r.it.sub || '';
+      const [x] = from.items.splice(i, 1); x.parent = r.it.parent || ''; x.sub = r.it.sub || ''; if (r.it.group) x.group = r.it.group; else delete x.group;
       let at = -1;
       for (const n of above) { const k = to.items.findIndex(y => y.bid === n.bid); if (k >= 0) { at = k + 1; break; } }
       if (at < 0) for (const n of below) { const k = to.items.findIndex(y => y.bid === n.bid); if (k >= 0) { at = k; break; } }
@@ -605,7 +605,10 @@ function packClick(e) {
   const lb = e.target.closest('[data-loadbase]');
   if (lb) { if (!CAN_WRITE) return true; const sec = TRIP.packing.sections[+lb.dataset.loadbase], base = baseOf(sec.title);
     const have = new Set(sec.items.map(i => i.text.trim().toLowerCase()));   // уже добавленное остаётся, повторы из базового не берём
-    sec.items = [...base.items.filter(i => !have.has(i.text.trim().toLowerCase())).map(i => ({ text: i.text, done: false, bag: null, group: '', sub: i.sub || '', parent: i.parent || '', bid: i.bid })), ...sec.items];
+    const add = base.items.filter(i => !have.has(i.text.trim().toLowerCase())).map(i => ({ text: i.text, done: false, bag: null, group: i.group || '', sub: i.sub || '', parent: i.parent || '', bid: i.bid }));
+    // без группы — в начало раздела; с группой (бельё в одежде, Мария, 15.10.26) — в конец своей группы, к вещам из гардероба
+    sec.items = [...add.filter(i => !i.group), ...sec.items];
+    add.filter(i => i.group).forEach(i => { let at = -1; sec.items.forEach((x, k) => { if ((x.group || '') === i.group) at = k; }); sec.items.splice(at < 0 ? sec.items.length : at + 1, 0, i); });
     sec.base = true; changed(); render(); return true; }
   const ak = e.target.closest('[data-ask]'); if (ak) { answerAsk(ak.dataset.ask); return true; }
   if (e.target.closest('[data-edit]')) return true;
