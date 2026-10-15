@@ -467,9 +467,12 @@ function packTab() {
   const done = refs.filter(r => r.it.done).length, left = refs.length - done;
   const anyOpen = TRIP.packing.sections.some(s => !ui.closed.has(s.title));   // «Свернуть всё» рядом со «Скрыть собранное» (Мария, 15.10.26, вариант В1)
   const bagOf = n => BAGS.find(b => b.name === n);
-  const visible = r => (!ui.filter || (ui.filter === '—' ? !r.it.bag : r.it.bag === ui.filter)) && !(ui.hideDone && r.it.done);
+  // место выбирается только у верхнего уровня: подпункт «Аптечки», «Проводов» лежит там же, где группа (Мария, 15.10.26)
+  const parentOf = r => r.it.parent ? TRIP.packing.sections[r.si].items.find(x => !x.parent && x.text === r.it.parent) : null;
+  const bagIs = r => { const p = parentOf(r); return p ? p.bag : r.it.bag; };
+  const visible = r => (!ui.filter || (ui.filter === '—' ? !bagIs(r) : bagIs(r) === ui.filter)) && !(ui.hideDone && r.it.done);
   const chip = (key, label, color) => {
-    const n = key === null ? refs.length : refs.filter(r => key === '—' ? !r.it.bag : r.it.bag === key).length;
+    const n = key === null ? refs.length : refs.filter(r => key === '—' ? !bagIs(r) : bagIs(r) === key).length;
     const sq = color === undefined ? '' : `<span class="sq${color === null ? ' white' : ''}" style="--g:${color || ''}"></span>`;
     return `<button data-bagf="${key === null ? '' : esc(key)}" aria-pressed="${ui.filter === key}">${sq}${esc(label)} <span class="c num">${n}</span></button>`;
   };
@@ -481,7 +484,7 @@ function packTab() {
       <button class="box" data-act="done" aria-pressed="${!!r.it.done}" aria-label="${r.it.done ? 'Снять отметку' : 'Отметить'}: ${esc(r.it.text)}">${r.it.done ? '✓' : ''}</button>
       ${ui.edit === r.id ? `<input class="pedit" data-edit="${r.id}" value="${esc(r.it.text)}" aria-label="Название вещи">`
         : `<span class="tx" data-act="done">${r.it.wardrobe ? wardrobeThumb(r.it.wardrobe) : ''}<span>${esc(r.it.text)}</span></span>`}
-      <span class="bagwrap"><button class="ls-tag ${b ? b.tag : 'nobag'}" data-act="bag" aria-haspopup="menu" aria-expanded="${ui.menu === r.id}">${b ? esc(b.name) : 'куда?'}</button>${menu}</span>
+      ${parentOf(r) ? '<span class="bagwrap"></span>' : `<span class="bagwrap"><button class="ls-tag ${b ? b.tag : 'nobag'}" data-act="bag" aria-haspopup="menu" aria-expanded="${ui.menu === r.id}">${b ? esc(b.name) : 'куда?'}</button>${menu}</span>`}
       <button class="pen w-only" data-act="edit" title="Изменить название" aria-label="Изменить: ${esc(r.it.text)}">${PEN}</button>
       <button class="x w-only" data-act="del" title="Убрать из этой поездки" aria-label="Убрать: ${esc(r.it.text)}">×</button>
     </div>${ui.ask && ui.ask.id === r.id ? askBar(ui.ask) : ''}`;
