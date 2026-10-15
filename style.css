@@ -349,3 +349,10 @@ body.dragging, body.dragging * { cursor: grabbing !important; -webkit-user-selec
 .pi.lift { position: relative; z-index: 5; background: var(--bg); border-radius: var(--radius-sm); box-shadow: 0 10px 30px #211c1c14, 0 1px 2px #211c1c0d, 0 0 0 1px var(--line); }
 .pi.into { background: var(--surface); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1.5px var(--ink); }
 .dropline { position: fixed; height: 2px; background: var(--ink); border-radius: 1px; pointer-events: none; z-index: 6; }
+
+/* чемодан: раздел собран целиком (15.10.26) — салатовая шапка и зелёная рамка, как «хорошо» в «Обзоре» */
+.psec.full { border-color: rgba(19, 133, 64, .35); }
+.psec.full .psec-h { background: var(--salad); border-radius: 5px 5px 0 0; }
+.psec.full .psec-h[aria-expanded="true"] { border-bottom-color: rgba(19, 133, 64, .35); }
+.psec.full .psec-h[aria-expanded="false"] { border-radius: 5px; }
+.psec.full .psec-h .cap { color: var(--good); font-weight: 600; }

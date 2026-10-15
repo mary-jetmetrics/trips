@@ -512,7 +512,8 @@ function packTab() {
         body += `<div class="pgroup" data-si="${si}" data-group="${esc(gr)}">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="добавить вещь" aria-label="Добавить вещь"></label></div>`;
       });
     }
-    return `<section class="psec ls-block"><button class="psec-h" data-sec="${esc(s.title)}" aria-expanded="${open}"><span class="ls-h">${esc(s.title)}</span><span class="cap num">${doneS} из ${all.length}</span></button>${body}</section>`;
+    const full = all.length && doneS === all.length;   // раздел собран целиком — зелёный, как «хорошо» в системе (Мария, 15.10.26)
+    return `<section class="psec ls-block${full ? ' full' : ''}"><button class="psec-h" data-sec="${esc(s.title)}" aria-expanded="${open}"><span class="ls-h">${esc(s.title)}</span><span class="cap num">${full ? '✓ собрано · ' : ''}${doneS} из ${all.length}</span></button>${body}</section>`;
   }).join('');
   return `<div style="display:grid;gap:var(--space-6)">
     <div class="stats3">
