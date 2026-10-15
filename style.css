@@ -377,3 +377,13 @@ body.dragging, body.dragging * { cursor: grabbing !important; -webkit-user-selec
 .pi.new { animation: newrow 1.6s ease-out; }
 @keyframes newrow { from { background: var(--pink-block); } to { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .pi.new { animation: none; background: var(--pink-block); } }
+
+/* чемодан: стрелка сворачивания группы с подпунктами (15.10.26) */
+.fold { flex: none; display: grid; place-items: center; width: 24px; height: 24px; margin: -2px -4px; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink-muted); cursor: pointer; }
+.fold:hover { color: var(--ink); background: var(--surface); }
+.fold svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.fold.shut svg { transform: rotate(-90deg); }
+.pi .tx .cap { white-space: nowrap; }
+.pi .tx.has-fold { flex-wrap: wrap; row-gap: 0; }   /* узко — счётчик свёрнутой группы уходит под название */
+.pi .tx .cap.kids-full { color: var(--good); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .fold svg { transition: none; } }

@@ -34,6 +34,7 @@ function when(t) {
   return `${d} ${b.getFullYear()} · ${n} ${plural(n, 'ночь', 'ночи', 'ночей')}`;
 }
 const PEN = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3L6 13H3v-3z M9 4l3 3"/></svg>';
+const CHEV = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5"/></svg>';
 const GRIP = '<svg viewBox="0 0 8 14" aria-hidden="true"><circle cx="2" cy="2" r="1.3"/><circle cx="6" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="6" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="6" cy="12" r="1.3"/></svg>';
 const WAVE = '<svg class="ls-wave" viewBox="0 0 190 8" aria-hidden="true"><path d="M1 4 Q 6 0 11 4 T 21 4 T 31 4 T 41 4 T 51 4 T 61 4 T 71 4 T 81 4 T 91 4 T 101 4 T 111 4 T 121 4 T 131 4 T 141 4 T 151 4 T 161 4 T 171 4 T 181 4"/></svg>';
 const UMBRELLA = '<svg class="ls-umbrella" width="40" height="40" viewBox="0 0 46 46" aria-hidden="true"><g transform="rotate(-14 23 23)"><path class="canopy" d="M8 20 A15 11 0 0 1 38 20 Z"/><path class="stripe" d="M23 20 L8 20 A15 11 0 0 1 12.5 12.2 Z"/><path class="stripe" d="M23 20 L18 9.3 A15 11 0 0 1 28 9.3 Z"/><path class="stripe" d="M23 20 L33.5 12.2 A15 11 0 0 1 38 20 Z"/><line class="stick" x1="23" y1="20" x2="22" y2="40"/></g></svg>';
@@ -455,7 +456,7 @@ const OLD_TITLES = { 'Супер-важное (документы и др)': 'С
 let BASE = null;
 const baseOf = title => BASE && (BASE.sections || []).find(x => x.title === title);
 const PACKUI = {};
-const packUI = () => (PACKUI[TRIP.id] = PACKUI[TRIP.id] || { filter: null, hideDone: false, closed: new Set(), menu: null });
+const packUI = () => (PACKUI[TRIP.id] = PACKUI[TRIP.id] || { filter: null, hideDone: false, closed: new Set(), folded: new Set(), menu: null });
 const packRefs = () => TRIP.packing.sections.flatMap((s, si) => s.items.map((it, ii) => ({ si, ii, it, sec: s.title, id: `${si}.${ii}` })));
 function packTab() {
   const ui = packUI(), refs = packRefs();
@@ -476,6 +477,13 @@ function packTab() {
     const sq = color === undefined ? '' : `<span class="sq${color === null ? ' white' : ''}" style="--g:${color || ''}"></span>`;
     return `<button data-bagf="${key === null ? '' : esc(key)}" aria-pressed="${ui.filter === key}">${sq}${esc(label)} <span class="c num">${n}</span></button>`;
   };
+  // группу с подпунктами («Аптечка», «Провода») сворачивает стрелка справа от названия; свёрнутая показывает, сколько внутри собрано (Мария, 15.10.26)
+  const foldKey = (si, text) => `${si}:${text}`;
+  const foldBtn = r => {
+    const kids = r.it.parent ? [] : kidsOf(TRIP.packing.sections[r.si], r.it); if (!kids.length) return '';
+    const shut = ui.folded.has(foldKey(r.si, r.it.text));
+    return `<button class="fold${shut ? ' shut' : ''}" data-act="fold" aria-expanded="${!shut}" aria-label="${shut ? 'Развернуть' : 'Свернуть'}: ${esc(r.it.text)}">${CHEV}</button>${shut ? `<span class="cap num${kids.every(k => k.done) ? ' kids-full' : ''}">${kids.filter(k => k.done).length}/${kids.length}</span>` : ''}`;
+  };
   const row = r => {
     const b = bagOf(r.it.bag);
     const menu = ui.menu === r.id ? `<div class="bagmenu" role="menu">${BAGS.map(x => `<button role="menuitem" data-setbag="${esc(x.name)}"><span class="ls-tag ${x.tag}">${esc(x.name)}</span></button>`).join('')}${b ? '<button role="menuitem" data-setbag="" class="cap">убрать место</button>' : ''}</div>` : '';
@@ -483,7 +491,7 @@ function packTab() {
       <span class="grip w-only" title="Перетащить" aria-hidden="true">${GRIP}</span>
       <button class="box" data-act="done" aria-pressed="${!!r.it.done}" aria-label="${r.it.done ? 'Снять отметку' : 'Отметить'}: ${esc(r.it.text)}">${r.it.done ? '✓' : ''}</button>
       ${ui.edit === r.id ? `<input class="pedit" data-edit="${r.id}" value="${esc(r.it.text)}" aria-label="Название вещи">`
-        : `<span class="tx" data-act="done">${r.it.wardrobe ? wardrobeThumb(r.it.wardrobe) : ''}<span>${esc(r.it.text)}</span></span>`}
+        : `<span class="tx${foldBtn(r) ? ' has-fold' : ''}" data-act="done">${r.it.wardrobe ? wardrobeThumb(r.it.wardrobe) : ''}<span>${esc(r.it.text)}</span>${foldBtn(r)}</span>`}
       ${parentOf(r) ? '<span class="bagwrap"></span>' : `<span class="bagwrap"><button class="ls-tag ${b ? b.tag : 'nobag'}" data-act="bag" aria-haspopup="menu" aria-expanded="${ui.menu === r.id}">${b ? esc(b.name) : 'куда?'}</button>${menu}</span>`}
       <button class="pen w-only" data-act="edit" title="Изменить название" aria-label="Изменить: ${esc(r.it.text)}">${PEN}</button>
       <button class="x w-only" data-act="del" title="Убрать из этой поездки" aria-label="Убрать: ${esc(r.it.text)}">×</button>
@@ -510,6 +518,7 @@ function packTab() {
         const order = r => lone(r) ? subs.length : subs.indexOf(r.it.sub || '');
         let subNow = null, rows = '';
         inGroup.filter(visible).sort((a, b) => order(a) - order(b) || subs.indexOf(a.it.sub || '') - subs.indexOf(b.it.sub || '') || a.ii - b.ii).forEach(r => {
+          if (r.it.parent && ui.folded.has(foldKey(si, r.it.parent))) return;
           const head = lone(r) ? 'Другое' : (r.it.sub || '');
           if (useSubs && head !== subNow) { subNow = head; if (head) rows += `<p class="ps">${esc(head)}</p>`; }
           rows += row(r);
@@ -629,6 +638,10 @@ function packClick(e) {
   const sh = e.target.closest('[data-sec]'); if (sh) { const k = sh.dataset.sec; ui.closed.has(k) ? ui.closed.delete(k) : ui.closed.add(k); ui.menu = null; render(); return true; }
   const a = e.target.closest('[data-act]');
   if (!a) { if (ui.menu) { ui.menu = null; render(); return true; } return false; }
+  if (a.dataset.act === 'fold') {   // сворачивать можно и в режиме «Только смотреть»
+    const r = packRefs().find(x => x.id === a.closest('[data-id]').dataset.id), k = `${r.si}:${r.it.text}`;
+    ui.folded.has(k) ? ui.folded.delete(k) : ui.folded.add(k); ui.menu = null; render(); return true;
+  }
   if (!CAN_WRITE) return true;
   const id = a.closest('[data-id]').dataset.id, r = packRefs().find(x => x.id === id);
   if (a.dataset.act === 'done') { r.it.done = !r.it.done; ui.menu = null; changed(); }
