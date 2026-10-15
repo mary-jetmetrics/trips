@@ -148,6 +148,10 @@ button { font: inherit; color: inherit; }
 .frow .filters { flex: 1 1 auto; }
 .hidelink { margin-left: auto; border: 0; background: none; padding: 0; font: inherit; font-size: 14px; line-height: 20px; color: var(--ink-muted); cursor: pointer; white-space: nowrap; }
 .hidelink:hover { color: var(--ink); }
+/* места в «Чемодане» мельче, чтобы на телефоне шли в две строки, а не в три (Мария, 15.10.26, вариант Ф1; 13 px — «чуточку побольше» 12-ти) */
+.frow .filters { gap: 4px; }
+.frow .filters button { font-size: 13px; line-height: 18px; padding: 3px 6px; gap: 4px; }
+@media (min-width: 720px) { .frow .filters { gap: 6px; } .frow .filters button { padding: 4px 8px; } }
 .links { margin-left: auto; display: flex; gap: var(--space-4); }
 .links .hidelink { margin-left: 0; }
 .pi .x { border: 0; background: none; color: var(--ink-muted); cursor: pointer; font-size: 16px; line-height: 20px; padding: 0; }
