@@ -148,6 +148,8 @@ button { font: inherit; color: inherit; }
 .frow .filters { flex: 1 1 auto; }
 .hidelink { margin-left: auto; border: 0; background: none; padding: 0; font: inherit; font-size: 14px; line-height: 20px; color: var(--ink-muted); cursor: pointer; white-space: nowrap; }
 .hidelink:hover { color: var(--ink); }
+.links { margin-left: auto; display: flex; gap: var(--space-4); }
+.links .hidelink { margin-left: 0; }
 .pi .x { border: 0; background: none; color: var(--ink-muted); cursor: pointer; font-size: 16px; line-height: 20px; padding: 0; }
 .add { display: flex; gap: var(--space-2); align-items: center; padding-top: var(--space-2); color: var(--ink-muted); font-size: 14px; }
 .add input { flex: 1; min-width: 0; border: 0; border-bottom: 1px solid transparent; font: inherit; font-size: 14px; line-height: 20px; background: none; color: var(--ink); padding: 2px 0; }
@@ -356,3 +358,5 @@ body.dragging, body.dragging * { cursor: grabbing !important; -webkit-user-selec
 .psec.full .psec-h[aria-expanded="true"] { border-bottom-color: rgba(19, 133, 64, .35); }
 .psec.full .psec-h[aria-expanded="false"] { border-radius: 5px; }
 .psec.full .psec-h .cap { color: var(--good); font-weight: 600; }
+.psec-h .cap { white-space: nowrap; }
+@media (max-width: 479px) { .wide-word { display: none; } }

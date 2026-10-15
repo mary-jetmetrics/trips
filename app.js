@@ -464,6 +464,7 @@ function packTab() {
       ${CAN_WRITE ? `${donors.map(t => `<button class="ls-btn" data-copy="${esc(t.id)}">Скопировать из «${esc(t.title)}», ${esc(when(t).split(' · ')[0])}</button>`).join('')}<button class="ls-btn" data-blank>Начать с пустых разделов</button>` : ''}</div></div>`;
   }
   const done = refs.filter(r => r.it.done).length, left = refs.length - done;
+  const anyOpen = TRIP.packing.sections.some(s => !ui.closed.has(s.title));   // «Свернуть всё» рядом со «Скрыть собранное» (Мария, 15.10.26, вариант В1)
   const bagOf = n => BAGS.find(b => b.name === n);
   const visible = r => (!ui.filter || (ui.filter === '—' ? !r.it.bag : r.it.bag === ui.filter)) && !(ui.hideDone && r.it.done);
   const chip = (key, label, color) => {
@@ -513,7 +514,7 @@ function packTab() {
       });
     }
     const full = all.length && doneS === all.length;   // раздел собран целиком — зелёный, как «хорошо» в системе (Мария, 15.10.26)
-    return `<section class="psec ls-block${full ? ' full' : ''}"><button class="psec-h" data-sec="${esc(s.title)}" aria-expanded="${open}"><span class="ls-h">${esc(s.title)}</span><span class="cap num">${full ? '✓ собрано · ' : ''}${doneS} из ${all.length}</span></button>${body}</section>`;
+    return `<section class="psec ls-block${full ? ' full' : ''}"><button class="psec-h" data-sec="${esc(s.title)}" aria-expanded="${open}"><span class="ls-h">${esc(s.title)}</span><span class="cap num">${full ? '✓ <span class="wide-word">собрано · </span>' : ''}${doneS} из ${all.length}</span></button>${body}</section>`;
   }).join('');
   return `<div style="display:grid;gap:var(--space-6)">
     <div class="stats3">
@@ -521,7 +522,7 @@ function packTab() {
       <div class="ls-block ls-stat"><b>${done}</b><span class="cap">собрано</span></div>
       <div class="ls-block ls-stat"><b>${left}</b><span class="cap">осталось</span></div>
     </div>
-    <div class="frow"><div class="filters">${chip(null, 'Все')}${BAGS.map(b => chip(b.name, b.name, b.color)).join('')}${chip('—', 'Без места', null)}</div><button class="hidelink" data-hide aria-pressed="${ui.hideDone}">${ui.hideDone ? 'Показать собранное' : 'Скрыть собранное'}</button></div>
+    <div class="frow"><div class="filters">${chip(null, 'Все')}${BAGS.map(b => chip(b.name, b.name, b.color)).join('')}${chip('—', 'Без места', null)}</div><span class="links"><button class="hidelink" data-hide aria-pressed="${ui.hideDone}">${ui.hideDone ? 'Показать собранное' : 'Скрыть собранное'}</button><button class="hidelink" data-allsec="${anyOpen ? 'close' : 'open'}">${anyOpen ? 'Свернуть всё' : 'Развернуть всё'}</button></span></div>
     <div class="psecs">${secHTML}</div>
   </div>`;
 }
@@ -615,6 +616,8 @@ function packClick(e) {
   if (sb) { if (!CAN_WRITE) return true; const r = packRefs().find(x => x.id === sb.closest('[data-id]').dataset.id); r.it.bag = sb.dataset.setbag || null; ui.menu = null; changed(); render(); return true; }
   const f = e.target.closest('[data-bagf]'); if (f) { const k = f.dataset.bagf || null; ui.filter = ui.filter === k ? null : k; ui.menu = null; render(); return true; }
   if (e.target.closest('[data-hide]')) { ui.hideDone = !ui.hideDone; ui.menu = null; render(); return true; }
+  const al = e.target.closest('[data-allsec]');
+  if (al) { TRIP.packing.sections.forEach(s => al.dataset.allsec === 'close' ? ui.closed.add(s.title) : ui.closed.delete(s.title)); ui.menu = null; render(); return true; }
   const sh = e.target.closest('[data-sec]'); if (sh) { const k = sh.dataset.sec; ui.closed.has(k) ? ui.closed.delete(k) : ui.closed.add(k); ui.menu = null; render(); return true; }
   const a = e.target.closest('[data-act]');
   if (!a) { if (ui.menu) { ui.menu = null; render(); return true; } return false; }
