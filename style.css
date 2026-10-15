@@ -364,3 +364,16 @@ body.dragging, body.dragging * { cursor: grabbing !important; -webkit-user-selec
 .psec.full .psec-h .cap { color: var(--good); font-weight: 600; }
 .psec-h .cap { white-space: nowrap; }
 @media (max-width: 479px) { .wide-word { display: none; } }
+
+/* чемодан: поиск по гардеробу под полем «добавить» в одежде (15.10.26) */
+.wsug { display: grid; margin-top: var(--space-1); padding: var(--space-1); background: var(--bg); border-radius: var(--radius-md); box-shadow: 0 10px 30px #211c1c14, 0 1px 2px #211c1c0d, 0 0 0 1px var(--line); }
+.wsug button { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--space-2); align-items: center; width: 100%; text-align: left; border: 0; background: none; padding: 6px var(--space-2); border-radius: var(--radius-sm); cursor: pointer; font: inherit; font-size: 14px; line-height: 20px; color: var(--ink); }
+.wsug button:hover, .wsug button[aria-selected="true"] { background: var(--surface); }
+.wsug button:disabled { cursor: default; color: var(--ink-muted); }
+.wsug button:disabled .wthumb { opacity: .5; }
+.wph { width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--surface); }
+.wnm { display: grid; min-width: 0; }
+.wmore { margin: 0; padding: 4px var(--space-2) 6px; }
+.pi.new { animation: newrow 1.6s ease-out; }
+@keyframes newrow { from { background: var(--pink-block); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .pi.new { animation: none; background: var(--pink-block); } }

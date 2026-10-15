@@ -475,7 +475,7 @@ function packTab() {
   const row = r => {
     const b = bagOf(r.it.bag);
     const menu = ui.menu === r.id ? `<div class="bagmenu" role="menu">${BAGS.map(x => `<button role="menuitem" data-setbag="${esc(x.name)}"><span class="ls-tag ${x.tag}">${esc(x.name)}</span></button>`).join('')}${b ? '<button role="menuitem" data-setbag="" class="cap">убрать место</button>' : ''}</div>` : '';
-    return `<div class="pi${r.it.done ? ' done' : ''}${r.it.parent ? ' child' : ''}" data-id="${r.id}">
+    return `<div class="pi${r.it.done ? ' done' : ''}${r.it.parent ? ' child' : ''}${r.it === ui.flash ? ' new' : ''}" data-id="${r.id}">
       <span class="grip w-only" title="Перетащить" aria-hidden="true">${GRIP}</span>
       <button class="box" data-act="done" aria-pressed="${!!r.it.done}" aria-label="${r.it.done ? 'Снять отметку' : 'Отметить'}: ${esc(r.it.text)}">${r.it.done ? '✓' : ''}</button>
       ${ui.edit === r.id ? `<input class="pedit" data-edit="${r.id}" value="${esc(r.it.text)}" aria-label="Название вещи">`
@@ -510,7 +510,7 @@ function packTab() {
           if (useSubs && head !== subNow) { subNow = head; if (head) rows += `<p class="ps">${esc(head)}</p>`; }
           rows += row(r);
         });
-        body += `<div class="pgroup" data-si="${si}" data-group="${esc(gr)}">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="добавить вещь" aria-label="Добавить вещь"></label></div>`;
+        body += `<div class="pgroup" data-si="${si}" data-group="${esc(gr)}">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="${s.title === 'Одежда и обувь' ? 'добавить: номер или слово из гардероба' : 'добавить вещь'}" aria-label="Добавить вещь" autocomplete="off"></label></div>`;
       });
     }
     const full = all.length && doneS === all.length;   // раздел собран целиком — зелёный, как «хорошо» в системе (Мария, 15.10.26)
@@ -602,6 +602,7 @@ function commitEdit(input) {
 }
 function packClick(e) {
   const ui = packUI();
+  const wp = e.target.closest('[data-wpick]'); if (wp) { if (CAN_WRITE && WS) wpick(+wp.dataset.wpick, WS.input); return true; }
   const lb = e.target.closest('[data-loadbase]');
   if (lb) { if (!CAN_WRITE) return true; const sec = TRIP.packing.sections[+lb.dataset.loadbase], base = baseOf(sec.title);
     const have = new Set(sec.items.map(i => i.text.trim().toLowerCase()));   // уже добавленное остаётся, повторы из базового не берём
@@ -640,6 +641,76 @@ function packAdd(input) {
   items.splice(at + 1, 0, { text, done: false, bag: ui.filter && ui.filter !== '—' ? ui.filter : null, group, sub: last ? last.sub || '' : '', parent: '' });
   ui.ask = baseOf(TRIP.packing.sections[si].title) ? { kind: 'add', id: `${si}.${at + 1}`, text } : null;
   changed(); render();
+  const again = [...document.querySelectorAll('[data-add]')].find(x => x.dataset.add === String(si) && x.dataset.group === group); if (again) again.focus();
+}
+
+/* ---------- Чемодан: вещь из гардероба поиском в поле «добавить» (Мария, 15.10.26) ---------- */
+// В «Одежде и обуви» поле ищет по гардеробу: номер (249) или слова из названия («юбка синяя»). Выбранная вещь встаёт в свою
+// категорию так же, как из гардероба («🧳 В поездку»): полное название и номер, поле wardrobe — гардероб видит её выбранной.
+// Enter выбирает вещь, только если её выделили стрелками или набран её точный номер; иначе — обычная строка, как раньше.
+const WCAT_ORDER = ['Верхняя одежда', 'Верх', 'Низ', 'Платья', 'Спорт', 'Купальники', 'Обувь', 'Аксессуары', 'Бельё'];   // порядок категорий гардероба
+let WITEMS = null, WS = null;   // WITEMS: вещи гардероба (null — не грузили, промис — грузятся); WS — открытая подсказка
+function loadWardrobe() {
+  if (WITEMS === null) WITEMS = (async () => {
+    try {
+      const r = await fetch(WARDROBE_API + `items.json?ref=${BRANCH}`, { headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/vnd.github.raw' }, cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      return (await r.json()).filter(i => i.core);   // актуальные, как в «В поездку»
+    } catch (e) { return []; }   // нет доступа к гардеробу — поле работает как обычное
+  })().then(a => (WITEMS = a));
+  return Promise.resolve(WITEMS);
+}
+const wstem = w => w.length > 4 ? w.slice(0, -2) : w.length > 3 ? w.slice(0, -1) : w;   // «юбку», «синий» ловят «Юбка … синяя»
+function wfind(q) {
+  q = q.trim().toLowerCase().replace(/^#/, ''); if (!q || !Array.isArray(WITEMS)) return [];
+  if (/^\d+$/.test(q)) return WITEMS.filter(i => String(i.no).startsWith(q)).sort((a, b) => (String(b.no) === q) - (String(a.no) === q) || a.no - b.no);
+  const ws = q.split(/\s+/).map(wstem);
+  const hay = i => `${i.name} ${i.cat} ${i.sub || ''} ${i.kind || ''}`.toLowerCase().replace(/ё/g, 'е');
+  return WITEMS.filter(i => ws.every(w => hay(i).includes(w.replace(/ё/g, 'е'))))
+    .sort((a, b) => b.name.toLowerCase().startsWith(ws[0]) - a.name.toLowerCase().startsWith(ws[0]) || a.no - b.no);
+}
+function wclose() { if (WS) { const el = WS.input.closest('.add')?.nextElementSibling; if (el && el.classList.contains('wsug')) el.remove(); } WS = null; }
+function wsuggest(input) {
+  wclose();
+  const sec = TRIP.packing.sections[+input.dataset.add];
+  if (!sec || sec.title !== 'Одежда и обувь' || !input.value.trim()) return;
+  if (!Array.isArray(WITEMS)) { loadWardrobe().then(() => { if (document.activeElement === input) wsuggest(input); }); return; }
+  const found = wfind(input.value), list = found.slice(0, 8); if (!list.length) return;
+  const inTrip = new Set(sec.items.map(x => x.wardrobe).filter(Boolean));
+  const el = document.createElement('div'); el.className = 'wsug'; el.setAttribute('role', 'listbox');
+  el.innerHTML = list.map(i => `<button type="button" role="option" aria-selected="false" data-wpick="${i.no}"${inTrip.has(i.no) ? ' disabled' : ''}>
+    <span class="wph">${wardrobeThumb(i.no)}</span><span class="wnm"><span>${esc(i.name)} · ${i.no}</span><span class="cap">${esc(i.cat)}${i.sub ? ' · ' + esc(i.sub) : ''}${inTrip.has(i.no) ? ' · уже в списке' : ''}</span></span></button>`).join('')
+    + (found.length > list.length ? `<p class="cap wmore">ещё ${found.length - list.length} — допиши цвет или бренд</p>` : '');
+  el.addEventListener('mousedown', e => e.preventDefault());   // поле не теряет фокус — клавиатура на телефоне не прячется
+  input.closest('.add').after(el); WS = { input }; hydrateWardrobe();
+}
+function wkey(e) {
+  if (!WS || WS.input !== e.target) return false;
+  const opts = [...(WS.input.closest('.add').nextElementSibling?.querySelectorAll('[data-wpick]:not(:disabled)') || [])];
+  if (e.key === 'Escape') { wclose(); return true; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); if (!opts.length) return true;
+    const k = opts.findIndex(o => o.getAttribute('aria-selected') === 'true'), n = e.key === 'ArrowDown' ? (k + 1) % opts.length : (k <= 0 ? opts.length - 1 : k - 1);
+    opts.forEach((o, j) => o.setAttribute('aria-selected', String(j === n))); return true;
+  }
+  if (e.key === 'Enter') {
+    const q = WS.input.value.trim().replace(/^#/, '');
+    const sel = opts.find(o => o.getAttribute('aria-selected') === 'true') || (/^\d+$/.test(q) && opts.find(o => o.dataset.wpick === q));
+    if (sel) { e.preventDefault(); wpick(+sel.dataset.wpick, WS.input); return true; }
+    if (/^\d+$/.test(q) && WITEMS.some(i => String(i.no) === q)) { e.preventDefault(); return true; }   // номер уже в списке — строку «249» не добавляем
+  }
+  return false;
+}
+function wpick(no, input) {
+  const it = Array.isArray(WITEMS) && WITEMS.find(x => x.no === no), si = +input.dataset.add, group = input.dataset.group, sec = TRIP.packing.sections[si], ui = packUI();
+  wclose(); if (!it || sec.items.some(x => x.wardrobe === no)) return;
+  const line = { text: `${it.name} · ${it.no}`, done: false, bag: ui.filter && ui.filter !== '—' ? ui.filter : null, group: it.cat, sub: it.sub || '', parent: '', wardrobe: it.no };
+  // в конец своей категории; категории ещё нет — на её место по порядку гардероба
+  const rank = g => { const k = WCAT_ORDER.indexOf(g || ''); return k < 0 ? WCAT_ORDER.length : k; };
+  let at = -1; sec.items.forEach((x, k) => { if ((x.group || '') === it.cat) at = k; });
+  if (at < 0) sec.items.forEach((x, k) => { if (rank(x.group) < rank(it.cat)) at = k; });
+  sec.items.splice(at + 1, 0, line);
+  ui.flash = line; ui.ask = null; changed(); render(); setTimeout(() => { if (ui.flash === line) ui.flash = null; }, 1700);
   const again = [...document.querySelectorAll('[data-add]')].find(x => x.dataset.add === String(si) && x.dataset.group === group); if (again) again.focus();
 }
 
@@ -882,11 +953,17 @@ root.addEventListener('click', e => {
   if (g && state.tab === 'Траты') { state.group = g.dataset.group || null; render(); }
 });
 root.addEventListener('pointerdown', dragStart);
+root.addEventListener('input', e => { if (TRIP && state.tab === 'Чемодан' && e.target.matches('[data-add]')) wsuggest(e.target); });
+root.addEventListener('focusin', e => { if (TRIP && state.tab === 'Чемодан' && e.target.matches('[data-add]') && TRIP.packing.sections[+e.target.dataset.add]?.title === 'Одежда и обувь') loadWardrobe(); });
 document.addEventListener('pointermove', e => { if (DRAG && e.pointerId === DRAG.pid) DRAG.y = e.clientY; });
 document.addEventListener('pointerup', e => { if (DRAG && e.pointerId === DRAG.pid) { DRAG.y = e.clientY; dragMove(); dragEnd(false); } });
 document.addEventListener('pointercancel', e => { if (DRAG && e.pointerId === DRAG.pid) dragEnd(true); });
-root.addEventListener('focusout', e => { if (e.target.matches && e.target.matches('[data-edit]') && packUI().edit === e.target.dataset.edit) commitEdit(e.target); });
+root.addEventListener('focusout', e => {
+  if (e.target.matches && e.target.matches('[data-edit]') && packUI().edit === e.target.dataset.edit) commitEdit(e.target);
+  if (WS && WS.input === e.target) { const t = e.target; setTimeout(() => { if (WS && WS.input === t && document.activeElement !== t) wclose(); }, 250); }
+});
 root.addEventListener('keydown', e => {
+  if (e.target.matches && e.target.matches('[data-add]') && wkey(e)) return;
   if (e.key === 'Escape' && e.target.matches && e.target.matches('[data-edit]')) { packUI().edit = null; render(); return; }
   if (e.key !== 'Enter') { const pk = e.target.closest('[data-pick]'); if (pk && e.key === ' ') { e.preventDefault(); pk.click(); } return; }
   const t = e.target;
