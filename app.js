@@ -465,13 +465,15 @@ function packTab() {
     return `<div class="ls-block"><div class="ls-empty starter" style="justify-items:center">${UMBRELLA}<span class="cap">Списка вещей пока нет.</span>
       ${CAN_WRITE ? `${donors.map(t => `<button class="ls-btn" data-copy="${esc(t.id)}">Скопировать из «${esc(t.title)}», ${esc(when(t).split(' · ')[0])}</button>`).join('')}<button class="ls-btn" data-blank>Начать с пустых разделов</button>` : ''}</div></div>`;
   }
-  const done = refs.filter(r => r.it.done).length, left = refs.length - done;
   const anyOpen = TRIP.packing.sections.some(s => !ui.closed.has(s.title));   // «Свернуть всё» рядом со «Скрыть собранное» (Мария, 15.10.26, вариант В1)
   const bagOf = n => BAGS.find(b => b.name === n);
   // место выбирается только у верхнего уровня: подпункт «Аптечки», «Проводов» лежит там же, где группа (Мария, 15.10.26)
   const parentOf = r => r.it.parent ? TRIP.packing.sections[r.si].items.find(x => !x.parent && x.text === r.it.parent) : null;
   const bagIs = r => { const p = parentOf(r); return p ? p.bag : r.it.bag; };
-  const visible = r => (!ui.filter || (ui.filter === '—' ? !bagIs(r) : bagIs(r) === ui.filter)) && !(ui.hideDone && r.it.done);
+  const inBag = r => !ui.filter || (ui.filter === '—' ? !bagIs(r) : bagIs(r) === ui.filter);
+  const visible = r => inBag(r) && !(ui.hideDone && r.it.done);
+  // готовность — по выбранному месту: при «Чемодане» плитки, счётчики разделов и зелёный считают только то, что едет в чемодане (Мария, 15.10.26)
+  const mineAll = refs.filter(inBag), done = mineAll.filter(r => r.it.done).length, left = mineAll.length - done;
   const chip = (key, label, color) => {
     const n = key === null ? refs.length : refs.filter(r => key === '—' ? !bagIs(r) : bagIs(r) === key).length;
     const sq = color === undefined ? '' : `<span class="sq${color === null ? ' white' : ''}" style="--g:${color || ''}"></span>`;
@@ -498,7 +500,7 @@ function packTab() {
     </div>${ui.ask && ui.ask.id === r.id ? askBar(ui.ask) : ''}`;
   };
   const secHTML = TRIP.packing.sections.map((s, si) => {
-    const all = refs.filter(r => r.si === si), doneS = all.filter(r => r.it.done).length, open = !ui.closed.has(s.title);
+    const all = refs.filter(r => r.si === si), mine = all.filter(inBag), doneS = mine.filter(r => r.it.done).length, open = !ui.closed.has(s.title);
     let body = '';
     if (open) {
       const base = baseOf(s.title);
@@ -526,12 +528,12 @@ function packTab() {
         body += `<div class="pgroup" data-si="${si}" data-group="${esc(gr)}">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="${s.title === 'Одежда и обувь' ? 'добавить: номер или слово из гардероба' : 'добавить вещь'}" aria-label="Добавить вещь" autocomplete="off"></label></div>`;
       });
     }
-    const full = all.length && doneS === all.length;   // раздел собран целиком — зелёный, как «хорошо» в системе (Мария, 15.10.26)
-    return `<section class="psec ls-block${full ? ' full' : ''}"><button class="psec-h" data-sec="${esc(s.title)}" aria-expanded="${open}"><span class="ls-h">${esc(s.title)}</span><span class="cap num">${full ? '✓ <span class="wide-word">собрано · </span>' : ''}${doneS} из ${all.length}</span></button>${body}</section>`;
+    const full = mine.length && doneS === mine.length;   // раздел собран целиком — зелёный, как «хорошо» в системе (Мария, 15.10.26)
+    return `<section class="psec ls-block${full ? ' full' : ''}"><button class="psec-h" data-sec="${esc(s.title)}" aria-expanded="${open}"><span class="ls-h">${esc(s.title)}</span><span class="cap num">${full ? '✓ <span class="wide-word">собрано · </span>' : ''}${mine.length ? `${doneS} из ${mine.length}` : 'нет'}</span></button>${body}</section>`;
   }).join('');
   return `<div style="display:grid;gap:var(--space-6)">
     <div class="stats3">
-      <div class="ls-block ls-stat"><b>${refs.length}</b><span class="cap">${plural(refs.length, 'вещь', 'вещи', 'вещей')} в списке</span></div>
+      <div class="ls-block ls-stat"><b>${mineAll.length}</b><span class="cap">${plural(mineAll.length, 'вещь', 'вещи', 'вещей')} ${!ui.filter ? 'в списке' : ui.filter === '—' ? 'без места' : '· ' + esc(ui.filter)}</span></div>
       <div class="ls-block ls-stat"><b>${done}</b><span class="cap">собрано</span></div>
       <div class="ls-block ls-stat"><b>${left}</b><span class="cap">осталось</span></div>
     </div>
