@@ -34,6 +34,7 @@ function when(t) {
   return `${d} ${b.getFullYear()} · ${n} ${plural(n, 'ночь', 'ночи', 'ночей')}`;
 }
 const PEN = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5l3 3L6 13H3v-3z M9 4l3 3"/></svg>';
+const GRIP = '<svg viewBox="0 0 8 14" aria-hidden="true"><circle cx="2" cy="2" r="1.3"/><circle cx="6" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="6" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="6" cy="12" r="1.3"/></svg>';
 const WAVE = '<svg class="ls-wave" viewBox="0 0 190 8" aria-hidden="true"><path d="M1 4 Q 6 0 11 4 T 21 4 T 31 4 T 41 4 T 51 4 T 61 4 T 71 4 T 81 4 T 91 4 T 101 4 T 111 4 T 121 4 T 131 4 T 141 4 T 151 4 T 161 4 T 171 4 T 181 4"/></svg>';
 const UMBRELLA = '<svg class="ls-umbrella" width="40" height="40" viewBox="0 0 46 46" aria-hidden="true"><g transform="rotate(-14 23 23)"><path class="canopy" d="M8 20 A15 11 0 0 1 38 20 Z"/><path class="stripe" d="M23 20 L8 20 A15 11 0 0 1 12.5 12.2 Z"/><path class="stripe" d="M23 20 L18 9.3 A15 11 0 0 1 28 9.3 Z"/><path class="stripe" d="M23 20 L33.5 12.2 A15 11 0 0 1 38 20 Z"/><line class="stick" x1="23" y1="20" x2="22" y2="40"/></g></svg>';
 
@@ -474,6 +475,7 @@ function packTab() {
     const b = bagOf(r.it.bag);
     const menu = ui.menu === r.id ? `<div class="bagmenu" role="menu">${BAGS.map(x => `<button role="menuitem" data-setbag="${esc(x.name)}"><span class="ls-tag ${x.tag}">${esc(x.name)}</span></button>`).join('')}${b ? '<button role="menuitem" data-setbag="" class="cap">убрать место</button>' : ''}</div>` : '';
     return `<div class="pi${r.it.done ? ' done' : ''}${r.it.parent ? ' child' : ''}" data-id="${r.id}">
+      <span class="grip w-only" title="Перетащить" aria-hidden="true">${GRIP}</span>
       <button class="box" data-act="done" aria-pressed="${!!r.it.done}" aria-label="${r.it.done ? 'Снять отметку' : 'Отметить'}: ${esc(r.it.text)}">${r.it.done ? '✓' : ''}</button>
       ${ui.edit === r.id ? `<input class="pedit" data-edit="${r.id}" value="${esc(r.it.text)}" aria-label="Название вещи">`
         : `<span class="tx" data-act="done">${r.it.wardrobe ? wardrobeThumb(r.it.wardrobe) : ''}<span>${esc(r.it.text)}</span></span>`}
@@ -507,7 +509,7 @@ function packTab() {
           if (useSubs && head !== subNow) { subNow = head; if (head) rows += `<p class="ps">${esc(head)}</p>`; }
           rows += row(r);
         });
-        body += `<div class="pgroup">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="добавить вещь" aria-label="Добавить вещь"></label></div>`;
+        body += `<div class="pgroup" data-si="${si}" data-group="${esc(gr)}">${gr ? `<p class="pg">${esc(gr)}</p>` : ''}${rows}<label class="add w-only"><span aria-hidden="true">+</span><input data-add="${si}" data-group="${esc(gr)}" placeholder="добавить вещь" aria-label="Добавить вещь"></label></div>`;
       });
     }
     return `<section class="psec ls-block"><button class="psec-h" data-sec="${esc(s.title)}" aria-expanded="${open}"><span class="ls-h">${esc(s.title)}</span><span class="cap num">${doneS} из ${all.length}</span></button>${body}</section>`;
@@ -555,7 +557,9 @@ async function baseOp(op, message) {
 }
 function baseItem(sec, it, old) { const b = baseOf(sec); return b && b.items.find(x => (it.bid && x.bid === it.bid) || x.text === (old ?? it.text)); }
 function askBar(a) {
-  const q = a.kind === 'add' ? `«${esc(a.text)}» — в базовый список тоже?` : `«${esc(a.old)}» → «${esc(a.text)}» — поменять и в базовом списке?`;
+  const q = a.kind === 'add' ? `«${esc(a.text)}» — в базовый список тоже?`
+    : a.kind === 'move' ? `«${esc(a.text)}» — ${esc(a.where)}. В базовом списке тоже?`
+    : `«${esc(a.old)}» → «${esc(a.text)}» — поменять и в базовом списке?`;
   return `<div class="ask"><span class="cap">${q}</span><div class="ask-b"><button class="ls-btn" data-ask="base">${a.kind === 'add' ? 'В базовый список' : 'И в базовом'}</button><button class="ls-btn" data-ask="once">${a.kind === 'add' ? 'Только эта поездка' : 'Только здесь'}</button></div></div>`;
 }
 function answerAsk(choice) {
@@ -568,6 +572,16 @@ function answerAsk(choice) {
       if (sec.items.some(x => x.bid === bid)) return;
       let at = -1; sec.items.forEach((x, k) => { if ((x.sub || '') === (r.it.sub || '')) at = k; });
       sec.items.splice(at < 0 ? sec.items.length : at + 1, 0, { bid, text: r.it.text, sub: r.it.sub || '', parent: r.it.parent || '' }); }, `базовый список: + «${r.it.text}»`);
+  } else if (a.kind === 'move') {
+    // в базовом встаёт за тем же соседом, что и в поездке (сосед выше, иначе ниже — из тех, что есть в базовом)
+    const items = TRIP.packing.sections[r.si].items, above = items.slice(0, r.ii).reverse().filter(x => x.bid), below = items.slice(r.ii + 1).filter(x => x.bid);
+    baseOp(B => { const from = (B.sections || []).find(x => x.title === a.from), to = (B.sections || []).find(x => x.title === a.to); if (!from || !to) return;
+      const i = from.items.findIndex(x => x.bid === a.bid); if (i < 0) return;
+      const [x] = from.items.splice(i, 1); x.parent = r.it.parent || ''; x.sub = r.it.sub || '';
+      let at = -1;
+      for (const n of above) { const k = to.items.findIndex(y => y.bid === n.bid); if (k >= 0) { at = k + 1; break; } }
+      if (at < 0) for (const n of below) { const k = to.items.findIndex(y => y.bid === n.bid); if (k >= 0) { at = k; break; } }
+      to.items.splice(at < 0 ? to.items.length : at, 0, x); }, `базовый список: «${a.text}» — ${a.where}`);
   } else {
     baseOp(B => { const sec = (B.sections || []).find(x => x.title === r.sec); const x = sec && sec.items.find(y => (a.bid && y.bid === a.bid) || y.text === a.old); if (x) x.text = a.text; },
       `базовый список: «${a.old}» → «${a.text}»`);
@@ -620,6 +634,90 @@ function packAdd(input) {
   ui.ask = baseOf(TRIP.packing.sections[si].title) ? { kind: 'add', id: `${si}.${at + 1}`, text } : null;
   changed(); render();
   const again = [...document.querySelectorAll('[data-add]')].find(x => x.dataset.add === String(si) && x.dataset.group === group); if (again) again.focus();
+}
+
+/* ---------- Чемодан: перетаскивание за ручку слева (Мария, 15.10.26) ---------- */
+// Порядок, перенос в другой раздел и внутрь вещи с подпунктами («Аптечка», «Стирка»). Куда встанет:
+// между двумя вещами — к нижней (её подзаголовок; нижняя — подпункт, значит и эта подпункт); на саму вещь с подпунктами — в конец её подпунктов.
+// Вещь с подпунктами едет вместе с ними и сама подпунктом не становится. Вещь из гардероба — только внутри своей категории одежды.
+let DRAG = null;
+const kidsOf = (sec, it) => it.parent ? [] : sec.items.filter(x => x !== it && x.parent === it.text);
+function dragStart(e) {
+  const g = e.target.closest('.grip'); if (!g || !CAN_WRITE || !TRIP || state.tab !== 'Чемодан' || e.button > 0 || packUI().edit) return;
+  const row = g.closest('.pi'), byId = new Map(packRefs().map(r => [r.id, r])), r = byId.get(row.dataset.id); if (!r) return;
+  e.preventDefault(); g.setPointerCapture(e.pointerId);
+  const ui = packUI(); ui.menu = null; ui.ask = null;
+  const kids = kidsOf(TRIP.packing.sections[r.si], r.it);
+  const rows = [...document.querySelectorAll('.pi[data-id]')].filter(el => { const x = byId.get(el.dataset.id); return x && (x.it === r.it || kids.includes(x.it)); });
+  const line = document.createElement('div'); line.className = 'dropline'; line.hidden = true; document.body.append(line);
+  DRAG = { it: r.it, si: r.si, kids, rows, byId, line, pid: e.pointerId, y: e.clientY, y0: e.clientY, s0: scrollY, slot: null };
+  rows.forEach(el => el.classList.add('lift')); document.body.classList.add('dragging');
+  DRAG.raf = requestAnimationFrame(dragTick);
+}
+function dragSlot(y) {
+  const D = DRAG; let pg = null, best = Infinity;
+  document.querySelectorAll('.pgroup[data-si]').forEach(el => { const b = el.getBoundingClientRect(), d = y < b.top ? b.top - y : y > b.bottom ? y - b.bottom : 0; if (d < best) { best = d; pg = el; } });
+  if (!pg) return null;
+  const si = +pg.dataset.si, gr = pg.dataset.group, sec = TRIP.packing.sections[si];
+  if (D.it.wardrobe && (si !== D.si || gr !== (D.it.group || ''))) return null;
+  let prev = null, head = null;   // prev — строка выше, head — подзаголовок между ней и следующей
+  for (const el of pg.children) {
+    if (el.matches('.ps')) { head = el; continue; }
+    if (!el.matches('.pi') || D.rows.includes(el)) continue;
+    const r = D.byId.get(el.dataset.id), b = el.getBoundingClientRect();
+    if (!D.kids.length && !D.it.wardrobe && kidsOf(sec, r.it).length && y > b.top + b.height / 4 && y < b.bottom - b.height / 4) return { si, gr, into: r.it, el };
+    if (y < b.top + b.height / 2 && !(D.kids.length && r.it.parent)) {   // вещь с подпунктами не встаёт посреди чужих подпунктов
+      if (head && prev && y < head.getBoundingClientRect().top + head.offsetHeight / 2) return { si, gr, after: prev.it, el: prev.el };   // в конец подзаголовка выше
+      return { si, gr, before: r.it, el };
+    }
+    prev = { it: r.it, el }; head = null;
+  }
+  return prev ? { si, gr, after: prev.it, el: prev.el } : { si, gr, el: pg };
+}
+function dropAttrs(s, D) {
+  if (s.into) return { parent: s.into.text, sub: s.into.sub || '' };
+  const nb = s.before || s.after;
+  return { parent: !D.kids.length && s.before && s.before.parent ? s.before.parent : '', sub: nb ? nb.sub || '' : '' };
+}
+function dragMove() {
+  const D = DRAG;
+  if (!D.rows[0].isConnected) return dragEnd(true);   // список перерисовался (пришли правки) — перенос отменяется
+  const dy = D.y - D.y0 + scrollY - D.s0; D.rows.forEach(el => { el.style.transform = `translateY(${dy}px)`; });
+  const s = D.slot = dragSlot(D.y);
+  D.rows[0].style.paddingLeft = !s ? '' : dropAttrs(s, D).parent ? '22px' : '0px';   // строка сдвигается вправо, если встанет подпунктом
+  document.querySelectorAll('.pi.into').forEach(el => el.classList.remove('into'));
+  if (!s || s.into) { D.line.hidden = true; if (s) s.el.classList.add('into'); return; }
+  const b = s.el.getBoundingClientRect(), y = s.before ? b.top : s.after ? b.bottom : b.top + 8, ind = dropAttrs(s, D).parent ? 44 : 0;
+  Object.assign(D.line.style, { top: `${y - 1}px`, left: `${b.left + ind}px`, width: `${b.width - ind}px` }); D.line.hidden = false;
+}
+function dragTick() {   // у края экрана список прокручивается сам
+  if (!DRAG) return;
+  const y = DRAG.y, edge = 70, v = y < edge ? -(edge - y) / 5 : y > innerHeight - edge ? (y - innerHeight + edge) / 5 : 0;
+  if (v) scrollBy(0, v);
+  dragMove(); if (DRAG) DRAG.raf = requestAnimationFrame(dragTick);
+}
+function dragEnd(cancel) {
+  const D = DRAG; if (!D) return; DRAG = null;
+  cancelAnimationFrame(D.raf); D.line.remove(); document.body.classList.remove('dragging');
+  const s = D.slot, src = TRIP.packing.sections[D.si], dst = s && TRIP.packing.sections[s.si];
+  if (cancel || !s || !src.items.includes(D.it)) return render();
+  const block = [D.it, ...D.kids], was = JSON.stringify([src.items, dst.items]), old = { parent: D.it.parent || '', sub: D.it.sub || '' };
+  const a = dropAttrs(s, D), ui = packUI();
+  block.forEach(x => src.items.splice(src.items.indexOf(x), 1));
+  let at;
+  if (s.into) at = Math.max(...dst.items.map((x, k) => x === s.into || x.parent === s.into.text ? k : -1)) + 1;
+  else if (s.before) at = dst.items.indexOf(s.before);
+  else if (s.after) at = Math.max(...dst.items.map((x, k) => x === s.after || (!s.after.parent && x.parent === s.after.text) ? k : -1)) + 1;
+  else { at = dst.items.length; dst.items.forEach((x, k) => { if ((x.group || '') === s.gr) at = k + 1; }); }
+  block.forEach(x => { x.group = s.gr; if (!x.wardrobe) x.sub = a.sub; });
+  D.it.parent = a.parent;
+  dst.items.splice(at, 0, ...block);
+  if (JSON.stringify([src.items, dst.items]) === was) return render();
+  const inBase = baseItem(src.title, D.it);
+  if (inBase && (a.parent !== old.parent || src !== dst || a.sub !== old.sub))
+    ui.ask = { kind: 'move', id: `${s.si}.${at}`, text: D.it.text, bid: inBase.bid, from: src.title, to: dst.title, parent: a.parent,
+      where: a.parent ? `в группу «${a.parent}»` : old.parent ? `из группы «${old.parent}»` : src !== dst ? `в раздел «${dst.title}»` : a.sub ? `под заголовок «${a.sub}»` : 'без заголовка' };
+  changed(); render();
 }
 
 /* ---------- Места и еда: один список, «были» и «понравилось», траты привязаны по place ---------- */
@@ -776,6 +874,10 @@ root.addEventListener('click', e => {
   const g = e.target.closest('[data-group]');
   if (g && state.tab === 'Траты') { state.group = g.dataset.group || null; render(); }
 });
+root.addEventListener('pointerdown', dragStart);
+document.addEventListener('pointermove', e => { if (DRAG && e.pointerId === DRAG.pid) DRAG.y = e.clientY; });
+document.addEventListener('pointerup', e => { if (DRAG && e.pointerId === DRAG.pid) { DRAG.y = e.clientY; dragMove(); dragEnd(false); } });
+document.addEventListener('pointercancel', e => { if (DRAG && e.pointerId === DRAG.pid) dragEnd(true); });
 root.addEventListener('focusout', e => { if (e.target.matches && e.target.matches('[data-edit]') && packUI().edit === e.target.dataset.edit) commitEdit(e.target); });
 root.addEventListener('keydown', e => {
   if (e.key === 'Escape' && e.target.matches && e.target.matches('[data-edit]')) { packUI().edit = null; render(); return; }
