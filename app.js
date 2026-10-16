@@ -61,6 +61,12 @@ async function blobURL(file) {
 
 /* ---------- сохранение: правка → через секунду карточка уходит в репозиторий ---------- */
 let saveTimer = null, saving = false, dirty = false, conflicts = 0;
+// GitHub после быстрой серии сохранений иногда отвечает «конфликт» и ещё несколько секунд отдаёт старую копию файла.
+// Это не чужая правка: если в репозитории одна из наших же версий — своё не выбрасываем, а пишем ещё раз чуть позже (16.10.26:
+// в «Фукуоке» так пропала загрузка базовых списков «Ухода» и «Одежды» — третье сохранение подряд откатилось к старой копии)
+const MINE = {};
+const remember = (id, obj) => { const a = MINE[id] = MINE[id] || []; a.push(JSON.stringify(obj)); if (a.length > 10) a.shift(); };
+const isMine = (id, obj) => (MINE[id] || []).includes(JSON.stringify(obj));
 function setSave(text, err) { const el = document.getElementById('save'); if (el) { el.textContent = text; el.classList.toggle('err', !!err); } }
 function changed() { if (!CAN_WRITE) return; dirty = true; setSave('Сохраняю…'); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 1000); }
 // карточку правили и здесь, и в другом месте (инбокс, гардероб, другое устройство): берём из обеих версий то, что поменялось;
@@ -88,18 +94,19 @@ async function flush() {
   const t = TRIP, file = `trips/${t.id}.json`, text = JSON.stringify(t, null, 1);
   try {
     await writeFile(file, b64enc(text), `«${t.title}»: правки из приложения`);
-    ORIG[t.id] = text; conflicts = 0; setSave('Сохранено');
+    ORIG[t.id] = text; remember(t.id, JSON.parse(text)); conflicts = 0; setSave('Сохранено');
   } catch (e) {
     if (e.status === 403) { CAN_WRITE = false; document.body.classList.add('ro'); setSave('У этого ключа только просмотр — правки не сохраняются', true); }
     else if (e.status === 409 || e.status === 422) {
       try {
         const fresh = await readJSON(file);
+        if (isMine(t.id, fresh) && conflicts < 6) { conflicts++; dirty = true; setSave('Сохраняю…'); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 700 * conflicts); return; }
         let merged = null;
         if (ORIG[t.id] && conflicts < 3) try { merged = merge3(JSON.parse(ORIG[t.id]), JSON.parse(JSON.stringify(TRIPS[t.id])), fresh); } catch (e3) { merged = null; }
         ORIG[t.id] = JSON.stringify(fresh);
         TRIPS[t.id] = merged || fresh; if (TRIP && TRIP.id === t.id) { setTrip(t.id); render(); }
         if (merged) { conflicts++; dirty = true; setSave('Сохраняю…'); clearTimeout(saveTimer); saveTimer = setTimeout(flush, 0); }
-        else { conflicts = 0; setSave('Подтянула правки с другого устройства — повтори последнее действие', true); }
+        else { conflicts = 0; setSave('Подтянула правки с другого устройства — проверь последние изменения и повтори их', true); }
       } catch (e2) { dirty = true; setSave('Не сохранилось, проверь интернет', true); }
     } else { dirty = true; setSave('Не сохранилось, повторю через 10 секунд', true); saveTimer = setTimeout(flush, 10000); }
   } finally { saving = false; }
@@ -130,7 +137,7 @@ async function boot() {
   root.innerHTML = '<p class="cap">Загружаю поездки…</p>';
   try {
     INDEX = await readJSON('index.json');
-    await Promise.all(INDEX.map(async t => { TRIPS[t.id] = await readJSON(`trips/${t.id}.json`); ORIG[t.id] = JSON.stringify(TRIPS[t.id]); }));
+    await Promise.all(INDEX.map(async t => { TRIPS[t.id] = await readJSON(`trips/${t.id}.json`); ORIG[t.id] = JSON.stringify(TRIPS[t.id]); remember(t.id, TRIPS[t.id]); }));
     try { BASE = await readJSON('packing-base.json'); } catch (e) { BASE = null; }
   } catch (e) {
     if ([401, 403, 404].includes(e.status)) { LS.del('trips-token'); TOKEN = null; return loginView('Ключ не подошёл. Проверь, что он для репозитория trips-data и не просрочен.'); }
@@ -529,7 +536,7 @@ function packTab() {
       });
     }
     const full = mine.length && doneS === mine.length;   // раздел собран целиком — зелёный, как «хорошо» в системе (Мария, 15.10.26)
-    return `<section class="psec ls-block${full ? ' full' : ''}"><button class="psec-h" data-sec="${esc(s.title)}" aria-expanded="${open}"><span class="ls-h">${esc(s.title)}</span><span class="cap num">${full ? '✓ <span class="wide-word">собрано · </span>' : ''}${mine.length ? `${doneS} из ${mine.length}` : 'нет'}</span></button>${body}</section>`;
+    return `<section class="psec ls-block${full ? ' full' : ''}"><button class="psec-h" data-sec="${esc(s.title)}" aria-expanded="${open}"><span class="ls-h">${esc(s.title)}</span><span class="cap num">${full ? '✓ <span class="wide-word">собрано · </span>' : ''}${mine.length ? `${doneS} из ${mine.length}` : ui.filter ? 'нет' : 'пусто'}</span></button>${body}</section>`;
   }).join('');
   return `<div style="display:grid;gap:var(--space-6)">
     <div class="stats3">
