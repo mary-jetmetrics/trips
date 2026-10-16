@@ -404,10 +404,8 @@ body.dragging, body.dragging * { cursor: grabbing !important; -webkit-user-selec
 .ls-table .xn { float: right; margin-left: var(--space-2); }   /* на телефоне таблица листается вбок — «×» у названия */
 @media (max-width: 719px) { .ls-table td.act, .ls-table th.w-only { display: none; } }
 @media (min-width: 720px) { .ls-table .xn { display: none; } }
-/* комментарий к трате — Мария пишет сама: ячейка-кнопка, пустая — с карандашом */
-.note-btn { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: text; display: inline-flex; gap: 6px; align-items: center; min-height: 20px; width: 100%; }
-.note-pen svg { width: 13px; height: 13px; fill: none; stroke: var(--line-strong); stroke-width: 1.4; }
-.note-btn:hover .note-pen svg { stroke: var(--ink-muted); }
+/* комментарий к трате — Мария пишет сама: вся ячейка — кнопка, без значков */
+.note-btn { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: text; display: block; min-height: 20px; width: 100%; }
 .ls-table td.note .pedit { width: 100%; }
 /* чек ↔ заведение (16.10.26): метка под названием траты, выбор строкой под ней; в «Еде» — «+ чек», «Чек отсюда?» */
 .ptag { display: block; border: 0; background: none; padding: 0; margin-top: 2px; font: inherit; font-size: 12.5px; line-height: 16px; color: var(--ink-muted); text-align: left; cursor: pointer; text-decoration: underline dotted; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }

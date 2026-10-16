@@ -405,7 +405,7 @@ const GROUPS = [
 ];
 const PREPAID = ['Жильё', 'Дорога'];
 const groupOf = c => GROUPS.find(g => g.cats.includes(c)) || GROUPS[GROUPS.length - 1];
-const note = e => [e.rank ? `${e.rank}-е место среди ресторанов поездки` : '', e.note, e.zid && e.who ? `платил${e.who === 'Мария' ? 'а' : ''} ${e.who}` : ''].filter(Boolean).join(' · ');
+const note = e => [e.rank ? `${e.rank}-е место среди ресторанов поездки` : '', e.note].filter(Boolean).join(' · ');   // «платил Глеб» не показываем (Мария, 16.10.26)
 // дата траты: из Дзенмани — «16 окт», оплаченное заранее (жильё, билеты) — «заранее»
 const dayOf = e => e.date ? (([, m, d]) => `${+d} ${MON_GEN[m - 1].slice(0, 3)}`)(e.date.split('-')) : PREPAID.includes(e.category) ? 'заранее' : '';
 const zenWhen = z => { const d = new Date(z); return isNaN(d) ? '' : `${d.getDate()} ${MON_GEN[d.getMonth()]}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -416,8 +416,8 @@ function summaryOf(t) {
 }
 // чек ↔ заведение (Мария, 16.10.26): у траты place = название пункта «Еды» или «Мест», чеков у места сколько угодно (заходили не раз);
 // place = null — Мария отвязала сама, скрипт Дзенмани такой чек сам больше не привяжет
-// к «Еде» — только «Готовая еда», продукты не привязываем (Мария, 16.10.26); к «Местам» — всё, кроме жилья, дороги, такси, транспорта
-const NO_PLACE = ['Жильё', 'Дорога', 'Такси', 'Транспорт'];
+// к «Еде» — только «Готовая еда»; продукты не привязываем никуда (Мария, 16.10.26); к «Местам» — всё, кроме жилья, дороги, такси, транспорта, продуктов
+const NO_PLACE = ['Жильё', 'Дорога', 'Такси', 'Транспорт', 'Продукты'];
 const fitsFood = e => e.category === 'Готовая еда', fitsPlace = e => !NO_PLACE.includes(e.category);
 const linkable = e => fitsFood(e) || (fitsPlace(e) && TRIP.places.length > 0);
 const freeChecks = kind => EXP.filter(e => e.zid && !e.place && (kind === 'food' ? fitsFood(e) : fitsPlace(e)))
@@ -444,7 +444,7 @@ function pickRow(e, cols) {
 function noteCell(e) {
   const i = TRIP.expenses.indexOf(e);
   if (state.noteEdit === i) return `<td class="note"><input class="pedit" data-enote="${i}" value="${esc(e.note || '')}" placeholder="комментарий" aria-label="Комментарий: ${esc(e.name)}"></td>`;
-  return CAN_WRITE ? `<td class="note"><button class="note-btn" data-enoteopen="${i}" title="Написать комментарий">${esc(note(e))}${e.note ? '' : `<span class="note-pen" aria-label="Написать комментарий">${PEN}</span>`}</button></td>`
+  return CAN_WRITE ? `<td class="note"><button class="note-btn" data-enoteopen="${i}" aria-label="Комментарий: ${esc(e.name)}">${esc(note(e))}</button></td>`   // без карандаша: жмёшь на ячейку — и пишешь
     : `<td class="note">${esc(note(e))}</td>`;
 }
 function commitNote(input, keep) {
