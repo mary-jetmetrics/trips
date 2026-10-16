@@ -405,7 +405,7 @@ const GROUPS = [
 ];
 const PREPAID = ['Жильё', 'Дорога'];
 const groupOf = c => GROUPS.find(g => g.cats.includes(c)) || GROUPS[GROUPS.length - 1];
-const note = e => e.rank ? `${e.rank}-е место среди ресторанов поездки` : [e.note, e.zid && e.who ? `платил${e.who === 'Мария' ? 'а' : ''} ${e.who}` : ''].filter(Boolean).join(' · ');
+const note = e => [e.rank ? `${e.rank}-е место среди ресторанов поездки` : '', e.note, e.zid && e.who ? `платил${e.who === 'Мария' ? 'а' : ''} ${e.who}` : ''].filter(Boolean).join(' · ');
 // дата траты: из Дзенмани — «16 окт», оплаченное заранее (жильё, билеты) — «заранее»
 const dayOf = e => e.date ? (([, m, d]) => `${+d} ${MON_GEN[m - 1].slice(0, 3)}`)(e.date.split('-')) : PREPAID.includes(e.category) ? 'заранее' : '';
 const zenWhen = z => { const d = new Date(z); return isNaN(d) ? '' : `${d.getDate()} ${MON_GEN[d.getMonth()]}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -413,6 +413,19 @@ function summaryOf(t) {
   const tot = t.expenses.reduce((s, e) => s + e.amount, 0), n = nightsOf(t);
   const onSite = t.expenses.filter(e => !PREPAID.includes(e.category)).reduce((s, e) => s + e.amount, 0);
   return { id: t.id, total: tot, perDay: n ? tot / n : null, onSiteDay: n ? onSite / n : null };
+}
+// комментарий к трате Мария пишет сама (16.10.26): поле note, скрипт Дзенмани его не трогает
+function noteCell(e) {
+  const i = TRIP.expenses.indexOf(e);
+  if (state.noteEdit === i) return `<td class="note"><input class="pedit" data-enote="${i}" value="${esc(e.note || '')}" placeholder="комментарий" aria-label="Комментарий: ${esc(e.name)}"></td>`;
+  return CAN_WRITE ? `<td class="note"><button class="note-btn" data-enoteopen="${i}" title="Написать комментарий">${esc(note(e))}${e.note ? '' : `<span class="note-pen" aria-label="Написать комментарий">${PEN}</span>`}</button></td>`
+    : `<td class="note">${esc(note(e))}</td>`;
+}
+function commitNote(input, keep) {
+  const it = TRIP.expenses[+input.dataset.enote]; state.noteEdit = null;
+  const v = input.value.trim();
+  if (keep && it && v !== (it.note || '')) { if (v) it.note = v; else delete it.note; changed(); }
+  render();
 }
 function spend() {
   // траты из Дзенмани приходят сами: всё, что потрачено в даты поездки (Мария, 16.10.26); лишнее — кнопкой «×» в «Не про поездку»
@@ -464,7 +477,7 @@ function spend() {
       <div class="filters">${chip(null)}${groups.map(chip).join('')}</div>
       <div class="table-box"><table class="ls-table">
         <thead><tr>${th('name', 'Название')}${th('amount', 'Сумма', 'num')}${th('category', 'Категория')}${dated ? th('date', 'Дата') : ''}${th('note', 'Комментарий')}${zen ? '<th class="w-only"></th>' : ''}</tr></thead>
-        <tbody>${rows.map(e => `<tr><td class="name">${zen && e.zid ? `<button class="xbtn xn w-only" data-excl="${esc(e.zid)}" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}${esc(e.name)}</td><td class="num">${fmt(e.amount)}</td><td><span class="ls-tag ${groupOf(e.category).tag}">${esc(e.category)}</span></td>${dated ? `<td class="day">${dayOf(e)}</td>` : ''}<td class="note">${esc(note(e))}</td>${zen ? `<td class="act w-only">${e.zid ? `<button class="xbtn" data-excl="${esc(e.zid)}" title="Не про поездку — убрать из трат" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody>
+        <tbody>${rows.map(e => `<tr><td class="name">${zen && e.zid ? `<button class="xbtn xn w-only" data-excl="${esc(e.zid)}" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}${esc(e.name)}</td><td class="num">${fmt(e.amount)}</td><td><span class="ls-tag ${groupOf(e.category).tag}">${esc(e.category)}</span></td>${dated ? `<td class="day">${dayOf(e)}</td>` : ''}${noteCell(e)}${zen ? `<td class="act w-only">${e.zid ? `<button class="xbtn" data-excl="${esc(e.zid)}" title="Не про поездку — убрать из трат" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody>
         <tfoot><tr><td>Итого${state.group ? ' · ' + esc(state.group) : ''}</td><td class="num">${fmt(rows.reduce((s, e) => s + e.amount, 0))}</td><td colspan="${2 + (dated ? 1 : 0) + (zen ? 1 : 0)}" class="cap">${rows.length} ${plural(rows.length, 'трата', 'траты', 'трат')}</td></tr></tfoot>
       </table></div>
       ${OUT.length ? `<details class="ls-block outs"${state.outOpen ? ' open' : ''}><summary>Не про поездку · ${OUT.length} · ${fmt(OUT.reduce((s, e) => s + e.amount, 0))}</summary>
@@ -995,6 +1008,8 @@ root.addEventListener('click', e => {
       render(); return;
     }
   }
+  const no = state.tab === 'Траты' && CAN_WRITE && e.target.closest('[data-enoteopen]');
+  if (no) { state.noteEdit = +no.dataset.enoteopen; render(); const inp = document.querySelector('[data-enote]'); if (inp) inp.focus(); return; }
   const sm = state.tab === 'Траты' && e.target.closest('.outs > summary');
   if (sm) { state.outOpen = !sm.parentElement.open; return; }   // раскрытое «Не про поездку» остаётся раскрытым после правок
   const xb = state.tab === 'Траты' && CAN_WRITE && e.target.closest('[data-excl],[data-back]');
@@ -1018,11 +1033,13 @@ document.addEventListener('pointerup', e => { if (DRAG && e.pointerId === DRAG.p
 document.addEventListener('pointercancel', e => { if (DRAG && e.pointerId === DRAG.pid) dragEnd(true); });
 root.addEventListener('focusout', e => {
   if (e.target.matches && e.target.matches('[data-edit]') && packUI().edit === e.target.dataset.edit) commitEdit(e.target);
+  if (e.target.matches && e.target.matches('[data-enote]') && state.noteEdit === +e.target.dataset.enote) commitNote(e.target, true);
   if (WS && WS.input === e.target) { const t = e.target; setTimeout(() => { if (WS && WS.input === t && document.activeElement !== t) wclose(); }, 250); }
 });
 root.addEventListener('keydown', e => {
   if (e.target.matches && e.target.matches('[data-add]') && wkey(e)) return;
   if (e.key === 'Escape' && e.target.matches && e.target.matches('[data-edit]')) { packUI().edit = null; render(); return; }
+  if (e.target.matches && e.target.matches('[data-enote]') && (e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); commitNote(e.target, e.key === 'Enter'); return; }
   if (e.key !== 'Enter') { const pk = e.target.closest('[data-pick]'); if (pk && e.key === ' ') { e.preventDefault(); pk.click(); } return; }
   const t = e.target;
   if (t.matches('[data-pick]')) { e.preventDefault(); t.click(); return; }
