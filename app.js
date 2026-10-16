@@ -416,21 +416,27 @@ function summaryOf(t) {
 }
 // чек ↔ заведение (Мария, 16.10.26): у траты place = название пункта «Еды» или «Мест», чеков у места сколько угодно (заходили не раз);
 // place = null — Мария отвязала сама, скрипт Дзенмани такой чек сам больше не привяжет
+// к «Еде» — только «Готовая еда», продукты не привязываем (Мария, 16.10.26); к «Местам» — всё, кроме жилья, дороги, такси, транспорта
 const NO_PLACE = ['Жильё', 'Дорога', 'Такси', 'Транспорт'];
-const linkable = e => !NO_PLACE.includes(e.category);
-const freeChecks = kind => EXP.filter(e => e.zid && !e.place && linkable(e)).sort((a, b) =>
-  (kind === 'food' ? (b.category === 'Готовая еда') - (a.category === 'Готовая еда') : 0) || (b.date || '').localeCompare(a.date || '') || b.amount - a.amount);
-function placeTag(e) {
+const fitsFood = e => e.category === 'Готовая еда', fitsPlace = e => !NO_PLACE.includes(e.category);
+const linkable = e => fitsFood(e) || (fitsPlace(e) && TRIP.places.length > 0);
+const freeChecks = kind => EXP.filter(e => e.zid && !e.place && (kind === 'food' ? fitsFood(e) : fitsPlace(e)))
+  .sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.amount - a.amount);
+// название траты: чек из банка, привязанный к месту, — одним названием места (банковское — в подсказке), без дубля (Мария, 16.10.26);
+// непривязанный — банковское и «где?»; ручные траты — своё название и место под ним
+function nameCell(e) {
   const i = TRIP.expenses.indexOf(e);
-  if (e.place) return CAN_WRITE ? `<button class="ptag" data-pplace="${i}" title="Поменять или отвязать">${esc(e.place)}</button>` : `<span class="ptag">${esc(e.place)}</span>`;
-  return CAN_WRITE && linkable(e) ? `<button class="ptag empty" data-pplace="${i}" title="Привязать к заведению или месту">где?</button>` : '';
+  if (e.zid && e.place) return CAN_WRITE ? `<button class="pname" data-pplace="${i}" title="Из банка: ${esc(e.name)}. Нажми, чтобы поменять или отвязать">${esc(e.place)}</button>`
+    : `<span title="Из банка: ${esc(e.name)}">${esc(e.place)}</span>`;
+  if (e.zid) return esc(e.name) + (CAN_WRITE && linkable(e) ? `<button class="ptag empty" data-pplace="${i}" title="Привязать к заведению или месту">где?</button>` : '');
+  return esc(e.name) + (e.place ? `<span class="ptag">${esc(e.place)}</span>` : '');
 }
 function pickRow(e, cols) {
   const i = TRIP.expenses.indexOf(e);
   if (state.pickFor !== i) return '';
-  const opts = [...TRIP.food.slice().sort((a, b) => !!b.visited - !!a.visited), ...TRIP.places.slice().sort((a, b) => !!b.visited - !!a.visited)];
+  const opts = [...(fitsFood(e) ? TRIP.food.slice().sort((a, b) => !!b.visited - !!a.visited) : []), ...TRIP.places.slice().sort((a, b) => !!b.visited - !!a.visited)];
   return `<tr class="pickrow"><td colspan="${cols}"><div class="picker">
-    <input class="pedit" data-psearch placeholder="найти в «Еде» и «Местах»" aria-label="Найти заведение или место">
+    <input class="pedit" data-psearch placeholder="${fitsFood(e) ? 'найти в «Еде» и «Местах»' : 'найти в «Местах»'}" aria-label="Найти заведение или место">
     <div class="pick-b">${opts.map(x => `<button data-pset="${esc(x.name)}" data-q="${esc(x.name.toLowerCase())}" aria-pressed="${e.place === x.name}">${x.visited ? '✓ ' : ''}${esc(x.name)}</button>`).join('')}</div>
     <div class="pick-act">${e.place ? '<button class="link" data-punlink>отвязать</button>' : ''}<button class="link" data-pclose>закрыть</button></div></div></td></tr>`;
 }
@@ -497,7 +503,7 @@ function spend() {
       <div class="filters">${chip(null)}${groups.map(chip).join('')}</div>
       <div class="table-box"><table class="ls-table">
         <thead><tr>${th('name', 'Название')}${th('amount', 'Сумма', 'num')}${th('category', 'Категория')}${dated ? th('date', 'Дата') : ''}${th('note', 'Комментарий')}${zen ? '<th class="w-only"></th>' : ''}</tr></thead>
-        <tbody>${rows.map(e => `<tr><td class="name">${zen && e.zid ? `<button class="xbtn xn w-only" data-excl="${esc(e.zid)}" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}${esc(e.name)}${placeTag(e)}</td><td class="num">${fmt(e.amount)}</td><td><span class="ls-tag ${groupOf(e.category).tag}">${esc(e.category)}</span></td>${dated ? `<td class="day">${dayOf(e)}</td>` : ''}${noteCell(e)}${zen ? `<td class="act w-only">${e.zid ? `<button class="xbtn" data-excl="${esc(e.zid)}" title="Не про поездку — убрать из трат" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}</td>` : ''}</tr>${pickRow(e, 4 + (dated ? 1 : 0) + (zen ? 1 : 0))}`).join('')}</tbody>
+        <tbody>${rows.map(e => `<tr><td class="name">${zen && e.zid ? `<button class="xbtn xn w-only" data-excl="${esc(e.zid)}" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}${nameCell(e)}</td><td class="num">${fmt(e.amount)}</td><td><span class="ls-tag ${groupOf(e.category).tag}">${esc(e.category)}</span></td>${dated ? `<td class="day">${dayOf(e)}</td>` : ''}${noteCell(e)}${zen ? `<td class="act w-only">${e.zid ? `<button class="xbtn" data-excl="${esc(e.zid)}" title="Не про поездку — убрать из трат" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}</td>` : ''}</tr>${pickRow(e, 4 + (dated ? 1 : 0) + (zen ? 1 : 0))}`).join('')}</tbody>
         <tfoot><tr><td>Итого${state.group ? ' · ' + esc(state.group) : ''}</td><td class="num">${fmt(rows.reduce((s, e) => s + e.amount, 0))}</td><td colspan="${2 + (dated ? 1 : 0) + (zen ? 1 : 0)}" class="cap">${rows.length} ${plural(rows.length, 'трата', 'траты', 'трат')}</td></tr></tfoot>
       </table></div>
       ${OUT.length ? `<details class="ls-block outs"${state.outOpen ? ' open' : ''}><summary>Не про поездку · ${OUT.length} · ${fmt(OUT.reduce((s, e) => s + e.amount, 0))}</summary>
@@ -898,7 +904,7 @@ function listTab(kind) {
     const caption = x.address ? esc(x.address) : esc(x.city || ''); // в адресе Яндекса город уже есть
     const free = CAN_WRITE ? freeChecks(kind) : [];
     // чеки места: дата, сумма, «×» — отвязать; «+ ещё чек» — зашли ещё раз
-    const menu = ui.menu === i ? `<div class="costmenu">${ex.map(e => `<div class="ck"><span class="ck-nm">${esc(e.name)}${e.date ? `<span class="cap">${dayOf(e)}</span>` : ''}</span><span class="num">${fmt(e.amount)}</span>${CAN_WRITE ? `<button class="xbtn" data-lact="unlink" data-z="${TRIP.expenses.indexOf(e)}" title="Отвязать чек" aria-label="Отвязать: ${esc(e.name)}">×</button>` : ''}</div>`).join('')}
+    const menu = ui.menu === i ? `<div class="costmenu">${ex.map(e => `<div class="ck"${e.zid ? ` title="Из банка: ${esc(e.name)}"` : ''}><span class="ck-nm">${e.zid ? `${dayOf(e)}${e.note ? `<span class="cap">${esc(e.note)}</span>` : ''}` : `${esc(e.name)}${e.date ? `<span class="cap">${dayOf(e)}</span>` : ''}`}</span><span class="num">${fmt(e.amount)}</span>${CAN_WRITE ? `<button class="xbtn" data-lact="unlink" data-z="${TRIP.expenses.indexOf(e)}" title="Отвязать чек" aria-label="Отвязать: ${esc(e.name)}">×</button>` : ''}</div>`).join('')}
       ${free.length ? '<button class="link" data-lact="link">+ ещё чек</button>' : ''}</div>` : '';
     const cands = ui.link === i ? free.slice(0, 6) : [];
     return `<div class="pl-row${x.visited ? '' : ' not'}" data-i="${i}">
