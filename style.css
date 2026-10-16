@@ -409,3 +409,20 @@ body.dragging, body.dragging * { cursor: grabbing !important; -webkit-user-selec
 .note-pen svg { width: 13px; height: 13px; fill: none; stroke: var(--line-strong); stroke-width: 1.4; }
 .note-btn:hover .note-pen svg { stroke: var(--ink-muted); }
 .ls-table td.note .pedit { width: 100%; }
+/* чек ↔ заведение (16.10.26): метка под названием траты, выбор строкой под ней; в «Еде» — «+ чек», «Чек отсюда?» */
+.ptag { display: block; border: 0; background: none; padding: 0; margin-top: 2px; font: inherit; font-size: 12.5px; line-height: 16px; color: var(--ink-muted); text-align: left; cursor: pointer; text-decoration: underline dotted; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.ptag.empty { color: var(--line-strong); text-decoration: none; }
+.ptag.empty:hover { color: var(--ink-muted); }
+.ls-table tr.pickrow td { background: var(--surface); }
+.picker { display: grid; gap: var(--space-2); max-width: 720px; }
+.pick-b { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; }
+.pick-b button { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); font: inherit; font-size: 13px; line-height: 18px; padding: 4px 10px; cursor: pointer; color: var(--ink); }
+.pick-b button[aria-pressed="true"] { border-color: var(--ink); font-weight: 600; }
+.pick-b button[hidden] { display: none; }
+.pick-act { display: flex; gap: var(--space-4); }
+.addcheck { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--ink-muted); cursor: pointer; white-space: nowrap; }
+.addcheck:hover { color: var(--ink); }
+.linker .rate-b button { padding: 0 10px; }
+.costmenu .num { display: inline-flex; gap: 6px; align-items: center; }
+.costmenu .link { justify-self: start; margin-top: 4px; font-size: 13px; }
+body.ro .ptag.empty, body.ro .addcheck { display: none; }

@@ -414,6 +414,26 @@ function summaryOf(t) {
   const onSite = t.expenses.filter(e => !PREPAID.includes(e.category)).reduce((s, e) => s + e.amount, 0);
   return { id: t.id, total: tot, perDay: n ? tot / n : null, onSiteDay: n ? onSite / n : null };
 }
+// чек ↔ заведение (Мария, 16.10.26): у траты place = название пункта «Еды» или «Мест», чеков у места сколько угодно (заходили не раз);
+// place = null — Мария отвязала сама, скрипт Дзенмани такой чек сам больше не привяжет
+const NO_PLACE = ['Жильё', 'Дорога', 'Такси', 'Транспорт'];
+const linkable = e => !NO_PLACE.includes(e.category);
+const freeChecks = kind => EXP.filter(e => e.zid && !e.place && linkable(e)).sort((a, b) =>
+  (kind === 'food' ? (b.category === 'Готовая еда') - (a.category === 'Готовая еда') : 0) || (b.date || '').localeCompare(a.date || '') || b.amount - a.amount);
+function placeTag(e) {
+  const i = TRIP.expenses.indexOf(e);
+  if (e.place) return CAN_WRITE ? `<button class="ptag" data-pplace="${i}" title="Поменять или отвязать">${esc(e.place)}</button>` : `<span class="ptag">${esc(e.place)}</span>`;
+  return CAN_WRITE && linkable(e) ? `<button class="ptag empty" data-pplace="${i}" title="Привязать к заведению или месту">где?</button>` : '';
+}
+function pickRow(e, cols) {
+  const i = TRIP.expenses.indexOf(e);
+  if (state.pickFor !== i) return '';
+  const opts = [...TRIP.food.slice().sort((a, b) => !!b.visited - !!a.visited), ...TRIP.places.slice().sort((a, b) => !!b.visited - !!a.visited)];
+  return `<tr class="pickrow"><td colspan="${cols}"><div class="picker">
+    <input class="pedit" data-psearch placeholder="найти в «Еде» и «Местах»" aria-label="Найти заведение или место">
+    <div class="pick-b">${opts.map(x => `<button data-pset="${esc(x.name)}" data-q="${esc(x.name.toLowerCase())}" aria-pressed="${e.place === x.name}">${x.visited ? '✓ ' : ''}${esc(x.name)}</button>`).join('')}</div>
+    <div class="pick-act">${e.place ? '<button class="link" data-punlink>отвязать</button>' : ''}<button class="link" data-pclose>закрыть</button></div></div></td></tr>`;
+}
 // комментарий к трате Мария пишет сама (16.10.26): поле note, скрипт Дзенмани его не трогает
 function noteCell(e) {
   const i = TRIP.expenses.indexOf(e);
@@ -477,7 +497,7 @@ function spend() {
       <div class="filters">${chip(null)}${groups.map(chip).join('')}</div>
       <div class="table-box"><table class="ls-table">
         <thead><tr>${th('name', 'Название')}${th('amount', 'Сумма', 'num')}${th('category', 'Категория')}${dated ? th('date', 'Дата') : ''}${th('note', 'Комментарий')}${zen ? '<th class="w-only"></th>' : ''}</tr></thead>
-        <tbody>${rows.map(e => `<tr><td class="name">${zen && e.zid ? `<button class="xbtn xn w-only" data-excl="${esc(e.zid)}" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}${esc(e.name)}</td><td class="num">${fmt(e.amount)}</td><td><span class="ls-tag ${groupOf(e.category).tag}">${esc(e.category)}</span></td>${dated ? `<td class="day">${dayOf(e)}</td>` : ''}${noteCell(e)}${zen ? `<td class="act w-only">${e.zid ? `<button class="xbtn" data-excl="${esc(e.zid)}" title="Не про поездку — убрать из трат" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody>
+        <tbody>${rows.map(e => `<tr><td class="name">${zen && e.zid ? `<button class="xbtn xn w-only" data-excl="${esc(e.zid)}" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}${esc(e.name)}${placeTag(e)}</td><td class="num">${fmt(e.amount)}</td><td><span class="ls-tag ${groupOf(e.category).tag}">${esc(e.category)}</span></td>${dated ? `<td class="day">${dayOf(e)}</td>` : ''}${noteCell(e)}${zen ? `<td class="act w-only">${e.zid ? `<button class="xbtn" data-excl="${esc(e.zid)}" title="Не про поездку — убрать из трат" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}</td>` : ''}</tr>${pickRow(e, 4 + (dated ? 1 : 0) + (zen ? 1 : 0))}`).join('')}</tbody>
         <tfoot><tr><td>Итого${state.group ? ' · ' + esc(state.group) : ''}</td><td class="num">${fmt(rows.reduce((s, e) => s + e.amount, 0))}</td><td colspan="${2 + (dated ? 1 : 0) + (zen ? 1 : 0)}" class="cap">${rows.length} ${plural(rows.length, 'трата', 'траты', 'трат')}</td></tr></tfoot>
       </table></div>
       ${OUT.length ? `<details class="ls-block outs"${state.outOpen ? ' open' : ''}><summary>Не про поездку · ${OUT.length} · ${fmt(OUT.reduce((s, e) => s + e.amount, 0))}</summary>
@@ -864,7 +884,7 @@ function dragEnd(cancel) {
 /* ---------- Места и еда: один список, «были» и «понравилось», траты привязаны по place ---------- */
 const LISTUI = {};
 function listTab(kind) {
-  const arr = TRIP[kind], ui = (LISTUI[TRIP.id + kind] = LISTUI[TRIP.id + kind] || { filter: null, menu: null, rate: null, del: null });
+  const arr = TRIP[kind], ui = (LISTUI[TRIP.id + kind] = LISTUI[TRIP.id + kind] || { filter: null, menu: null, rate: null, del: null, link: null });
   const word = kind === 'food' ? ['заведение', 'заведения', 'заведений'] : ['место', 'места', 'мест'];
   const exOf = name => EXP.filter(e => e.place === name);
   const sumOf = name => exOf(name).reduce((s, e) => s + e.amount, 0);
@@ -876,15 +896,20 @@ function listTab(kind) {
   const row = ({ x, i }) => {
     const ex = exOf(x.name), sum = ex.reduce((s, e) => s + e.amount, 0);
     const caption = x.address ? esc(x.address) : esc(x.city || ''); // в адресе Яндекса город уже есть
-    const menu = ui.menu === i ? `<div class="costmenu">${ex.map(e => `<div><span>${esc(e.name)}</span><span class="num">${fmt(e.amount)}</span></div>`).join('')}</div>` : '';
+    const free = CAN_WRITE ? freeChecks(kind) : [];
+    // чеки места: дата, сумма, «×» — отвязать; «+ ещё чек» — зашли ещё раз
+    const menu = ui.menu === i ? `<div class="costmenu">${ex.map(e => `<div><span>${esc(e.name)}${e.date ? ` <span class="cap">${dayOf(e)}</span>` : ''}</span><span class="num">${fmt(e.amount)}${CAN_WRITE ? `<button class="xbtn" data-lact="unlink" data-z="${TRIP.expenses.indexOf(e)}" title="Отвязать чек" aria-label="Отвязать: ${esc(e.name)}">×</button>` : ''}</span></div>`).join('')}
+      ${free.length ? '<button class="link" data-lact="link">+ ещё чек</button>' : ''}</div>` : '';
+    const cands = ui.link === i ? free.slice(0, 6) : [];
     return `<div class="pl-row${x.visited ? '' : ' not'}" data-i="${i}">
       <button class="box" data-lact="visited" aria-pressed="${!!x.visited}" aria-label="${x.visited ? 'Были' : 'Отметить «были»'}: ${esc(x.name)}">${x.visited ? '✓' : ''}</button>
       <span class="nm"><span>${esc(x.name)}${x.rank ? ` <span class="cap">· ${x.rank}-е место</span>` : ''}</span>${caption ? `<span class="linked">${caption}</span>` : ''}${x.oid ? `<a href="https://yandex.ru/maps/org/${esc(x.oid)}" target="_blank" rel="noopener">в Яндекс Картах</a>` : ''}</span>
-      <span class="cost">${sum ? `<button data-lact="cost" title="${esc(ex.map(e => e.name + ' — ' + fmt(e.amount)).join('\n'))}">${fmt(sum)}</button>${menu}` : ''}</span>
+      <span class="cost">${sum ? `<button data-lact="cost" title="${esc(ex.map(e => e.name + ' — ' + fmt(e.amount)).join('\n'))}">${fmt(sum)}</button>${menu}` : x.visited && free.length ? '<button class="addcheck" data-lact="link">+ чек</button>' : ''}</span>
       ${x.visited ? `<button class="rate${x.rating ? '' : ' empty'}" data-lact="rate" aria-label="Оценка: ${esc(x.name)}">${x.rating || 'оценить'}</button>` : '<span></span>'}
       <button class="ldel w-only${ui.del === i ? ' sure' : ''}" data-lact="del" title="Убрать" aria-label="Убрать: ${esc(x.name)}">${ui.del === i ? 'убрать?' : '×'}</button>
     </div>${ui.rate === i ? `<div class="rater" data-i="${i}"><span class="cap">Оценка из 10</span><div class="rate-b">${Array.from({ length: 10 }, (_, k) =>
-      `<button data-lact="setrate" data-v="${k + 1}" aria-pressed="${x.rating === k + 1}">${k + 1}</button>`).join('')}<button class="later" data-lact="later">${x.rating ? 'убрать оценку' : 'позже'}</button></div></div>` : ''}`;
+      `<button data-lact="setrate" data-v="${k + 1}" aria-pressed="${x.rating === k + 1}">${k + 1}</button>`).join('')}<button class="later" data-lact="later">${x.rating ? 'убрать оценку' : 'позже'}</button></div></div>` : ''}${cands.length ? `<div class="rater linker" data-i="${i}"><span class="cap">Чек отсюда?</span><div class="rate-b">${cands.map(e =>
+      `<button data-lact="pick" data-z="${TRIP.expenses.indexOf(e)}">${esc(e.name)} · ${fmt(e.amount)}${e.date ? ` · ${dayOf(e)}` : ''}</button>`).join('')}<button class="later" data-lact="nolink">нет</button></div></div>` : ''}`;
   };
   const chip = (key, label, n) => `<button data-lfilter="${key || ''}" aria-pressed="${ui.filter === key}">${label} <span class="c num">${n}</span></button>`;
   return `<div style="display:grid;gap:var(--space-6)">
@@ -916,7 +941,16 @@ function listClick(e) {
     TRIP[kind].splice(i, 1); ui.del = null; ui.rate = null; ui.menu = null; changed(); render(); return true;
   }
   ui.del = null;
-  if (a.dataset.lact === 'visited') { x.visited = !x.visited; if (!x.visited) delete x.rating; ui.rate = x.visited && !x.rating ? i : null; }   // сняли «были» — без оценки
+  if (a.dataset.lact === 'link') { ui.link = ui.link === i ? null : i; ui.menu = null; render(); return true; }
+  if (a.dataset.lact === 'nolink') { ui.link = null; render(); return true; }
+  if (a.dataset.lact === 'pick' || a.dataset.lact === 'unlink') {
+    const it = TRIP.expenses[+a.dataset.z]; if (it) it.place = a.dataset.lact === 'pick' ? x.name : null;
+    ui.link = null; if (a.dataset.lact === 'pick') ui.menu = null; changed(); render(); return true;
+  }
+  if (a.dataset.lact === 'visited') {   // сняли «были» — без оценки; отметили — спросить про чек, если есть непривязанные
+    x.visited = !x.visited; if (!x.visited) delete x.rating; ui.rate = x.visited && !x.rating ? i : null;
+    ui.link = x.visited && freeChecks(kind).length ? i : null;
+  }
   if (a.dataset.lact === 'rate') { ui.rate = ui.rate === i ? null : i; render(); return true; }
   if (a.dataset.lact === 'setrate') { x.rating = +a.dataset.v; ui.rate = null; }
   if (a.dataset.lact === 'later') { if (x.rating) delete x.rating; ui.rate = null; }
@@ -1008,6 +1042,17 @@ root.addEventListener('click', e => {
       render(); return;
     }
   }
+  if (state.tab === 'Траты' && CAN_WRITE) {
+    const pp = e.target.closest('[data-pplace]');
+    if (pp) { state.pickFor = state.pickFor === +pp.dataset.pplace ? null : +pp.dataset.pplace; render(); const q = document.querySelector('[data-psearch]'); if (q) q.focus({ preventScroll: true }); return; }
+    const ps = e.target.closest('[data-pset],[data-punlink],[data-pclose]');
+    if (ps) {
+      const it = TRIP.expenses[state.pickFor];
+      if (it && ps.dataset.pset !== undefined) { it.place = ps.dataset.pset; changed(); }
+      if (it && ps.hasAttribute('data-punlink')) { it.place = null; changed(); }
+      state.pickFor = null; render(); return;
+    }
+  }
   const no = state.tab === 'Траты' && CAN_WRITE && e.target.closest('[data-enoteopen]');
   if (no) { state.noteEdit = +no.dataset.enoteopen; render(); const inp = document.querySelector('[data-enote]'); if (inp) inp.focus(); return; }
   const sm = state.tab === 'Траты' && e.target.closest('.outs > summary');
@@ -1026,7 +1071,11 @@ root.addEventListener('click', e => {
   if (g && state.tab === 'Траты') { state.group = g.dataset.group || null; render(); }
 });
 root.addEventListener('pointerdown', dragStart);
-root.addEventListener('input', e => { if (TRIP && state.tab === 'Чемодан' && e.target.matches('[data-add]')) wsuggest(e.target); });
+root.addEventListener('input', e => {
+  if (TRIP && state.tab === 'Чемодан' && e.target.matches('[data-add]')) wsuggest(e.target);
+  // поиск в выборе заведения — прячем лишнее, не перерисовывая (иначе пропадает фокус)
+  if (TRIP && state.tab === 'Траты' && e.target.matches('[data-psearch]')) { const q = e.target.value.trim().toLowerCase(); document.querySelectorAll('[data-pset]').forEach(b => { b.hidden = !!q && !b.dataset.q.includes(q); }); }
+});
 root.addEventListener('focusin', e => { if (TRIP && state.tab === 'Чемодан' && e.target.matches('[data-add]') && TRIP.packing.sections[+e.target.dataset.add]?.title === 'Одежда и обувь') loadWardrobe(); });
 document.addEventListener('pointermove', e => { if (DRAG && e.pointerId === DRAG.pid) DRAG.y = e.clientY; });
 document.addEventListener('pointerup', e => { if (DRAG && e.pointerId === DRAG.pid) { DRAG.y = e.clientY; dragMove(); dragEnd(false); } });
@@ -1040,6 +1089,10 @@ root.addEventListener('keydown', e => {
   if (e.target.matches && e.target.matches('[data-add]') && wkey(e)) return;
   if (e.key === 'Escape' && e.target.matches && e.target.matches('[data-edit]')) { packUI().edit = null; render(); return; }
   if (e.target.matches && e.target.matches('[data-enote]') && (e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); commitNote(e.target, e.key === 'Enter'); return; }
+  if (e.target.matches && e.target.matches('[data-psearch]')) {
+    if (e.key === 'Escape') { state.pickFor = null; render(); return; }
+    if (e.key === 'Enter') { e.preventDefault(); const b = [...document.querySelectorAll('[data-pset]')].find(x => !x.hidden); if (b) b.click(); return; }
+  }
   if (e.key !== 'Enter') { const pk = e.target.closest('[data-pick]'); if (pk && e.key === ' ') { e.preventDefault(); pk.click(); } return; }
   const t = e.target;
   if (t.matches('[data-pick]')) { e.preventDefault(); t.click(); return; }
