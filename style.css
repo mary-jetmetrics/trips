@@ -423,6 +423,11 @@ body.dragging, body.dragging * { cursor: grabbing !important; -webkit-user-selec
 .addcheck { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--ink-muted); cursor: pointer; white-space: nowrap; }
 .addcheck:hover { color: var(--ink); }
 .linker .rate-b button { padding: 0 10px; }
-.costmenu .num { display: inline-flex; gap: 6px; align-items: center; }
+/* список чеков у места: название, под ним дата; сумма без переноса; «×» отдельным столбцом */
+.costmenu { max-width: calc(100vw - 32px); }
+.costmenu .ck { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--space-3); align-items: baseline; padding: 4px 0; }
+.costmenu .ck + .ck { border-top: 1px solid var(--line); }
+.costmenu .ck-nm { display: flex; flex-direction: column; min-width: 0; }
+.costmenu .ck .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .costmenu .link { justify-self: start; margin-top: 4px; font-size: 13px; }
 body.ro .ptag.empty, body.ro .addcheck { display: none; }

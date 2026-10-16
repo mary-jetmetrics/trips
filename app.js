@@ -894,11 +894,11 @@ function listTab(kind) {
   const rated = arr.filter(x => x.rating).sort((a, b) => b.rating - a.rating).slice(0, 5);   // «Лучшие» — и в еде, и в местах
   const best = rated.length ? [] : kind === 'food' ? arr.filter(x => x.rank).sort((a, b) => a.rank - b.rank) : [];
   const row = ({ x, i }) => {
-    const ex = exOf(x.name), sum = ex.reduce((s, e) => s + e.amount, 0);
+    const ex = exOf(x.name).sort((a, b) => (a.date || '').localeCompare(b.date || '')), sum = ex.reduce((s, e) => s + e.amount, 0);   // чеки — по порядку визитов
     const caption = x.address ? esc(x.address) : esc(x.city || ''); // в адресе Яндекса город уже есть
     const free = CAN_WRITE ? freeChecks(kind) : [];
     // чеки места: дата, сумма, «×» — отвязать; «+ ещё чек» — зашли ещё раз
-    const menu = ui.menu === i ? `<div class="costmenu">${ex.map(e => `<div><span>${esc(e.name)}${e.date ? ` <span class="cap">${dayOf(e)}</span>` : ''}</span><span class="num">${fmt(e.amount)}${CAN_WRITE ? `<button class="xbtn" data-lact="unlink" data-z="${TRIP.expenses.indexOf(e)}" title="Отвязать чек" aria-label="Отвязать: ${esc(e.name)}">×</button>` : ''}</span></div>`).join('')}
+    const menu = ui.menu === i ? `<div class="costmenu">${ex.map(e => `<div class="ck"><span class="ck-nm">${esc(e.name)}${e.date ? `<span class="cap">${dayOf(e)}</span>` : ''}</span><span class="num">${fmt(e.amount)}</span>${CAN_WRITE ? `<button class="xbtn" data-lact="unlink" data-z="${TRIP.expenses.indexOf(e)}" title="Отвязать чек" aria-label="Отвязать: ${esc(e.name)}">×</button>` : ''}</div>`).join('')}
       ${free.length ? '<button class="link" data-lact="link">+ ещё чек</button>' : ''}</div>` : '';
     const cands = ui.link === i ? free.slice(0, 6) : [];
     return `<div class="pl-row${x.visited ? '' : ' not'}" data-i="${i}">
