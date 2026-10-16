@@ -387,3 +387,20 @@ body.dragging, body.dragging * { cursor: grabbing !important; -webkit-user-selec
 .pi .tx.has-fold { flex-wrap: wrap; row-gap: 0; }   /* узко — счётчик свёрнутой группы уходит под название */
 .pi .tx .cap.kids-full { color: var(--good); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .fold svg { transition: none; } }
+
+/* траты из Дзенмани (16.10.26): дата, «×» — не про поездку, свёрнутый список убранного с «вернуть» */
+.ls-table td.day { white-space: nowrap; color: var(--ink-muted); }
+.ls-table td.act, .ls-table th.w-only { width: 1%; padding-left: 0; text-align: right; }
+.xbtn { border: 0; background: none; padding: 0 2px; min-width: 18px; color: var(--ink-muted); cursor: pointer; font: inherit; font-size: 16px; line-height: 20px; }
+.xbtn:hover { color: var(--bad); }
+.zen-fresh { margin: calc(var(--space-2) * -1) 0 var(--space-3); }
+.outs { padding-top: var(--space-3); padding-bottom: var(--space-3); }
+.outs summary { cursor: pointer; color: var(--ink-muted); }
+.outs[open] summary { color: var(--ink); margin-bottom: var(--space-2); }
+.outs > .cap { margin: 0 0 var(--space-2); }
+.out-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--space-3); align-items: baseline; padding: var(--space-2) 0; border-top: 1px solid var(--line); }
+.out-row .nm { display: flex; flex-direction: column; }
+.out-row .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ls-table .xn { float: right; margin-left: var(--space-2); }   /* на телефоне таблица листается вбок — «×» у названия */
+@media (max-width: 719px) { .ls-table td.act, .ls-table th.w-only { display: none; } }
+@media (min-width: 720px) { .ls-table .xn { display: none; } }

@@ -27,6 +27,8 @@ const b64dec = b64 => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(
 const today = () => new Date(new Date().toDateString());
 const nightsOf = t => t.dates ? Math.round((new Date(t.dates.end) - new Date(t.dates.start)) / 864e5) : null;
 const ended = t => t.dates && new Date(t.dates.end) < today();
+const started = t => t.dates && new Date(t.dates.start + 'T00:00:00') <= today();
+const isoDay = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function when(t) {
   if (!t.dates) { const [y, m] = t.month.split('-').map(Number); return `${MONTHS[m - 1]} ${y}`; }
   const a = new Date(t.dates.start), b = new Date(t.dates.end), n = nightsOf(t);
@@ -190,7 +192,7 @@ function photoStack(t) {
   const pick = P.length <= 3 ? P : [P[0], P[Math.floor(P.length / 2)], P[P.length - 1]];
   return `<span class="stack" aria-hidden="true">${pick.map(p => `<img data-file="${esc(p.file)}" alt="">`).join('')}</span>`;
 }
-const spentOf = t => (t.expenses || []).reduce((s, x) => s + (x.amount || 0), 0);
+const spentOf = t => (t.expenses || []).filter(x => !x.excluded).reduce((s, x) => s + (x.amount || 0), 0);
 function tripItem(t) {
   const past = isPast(t), spent = spentOf(t);
   return `<div class="it${past ? '' : ' soon'}">${typeBadge(t)}
@@ -278,10 +280,12 @@ function setTrip(id) {
     TRIP.packing.sections.sort((a, b) => order(a.title) - order(b.title));
   }
   TRIP.places = TRIP.places || []; TRIP.food = TRIP.food || []; TRIP.photos = TRIP.photos || []; TRIP.notes = TRIP.notes || [];
-  EXP = TRIP.expenses = TRIP.expenses || [];
+  TRIP.expenses = TRIP.expenses || [];
   nights = nightsOf(TRIP);
-  total = EXP.reduce((s, e) => s + e.amount, 0);
+  refreshExp();
 }
+// траты поездки — без убранных «не про поездку» (поле excluded у трат из Дзенмани)
+function refreshExp() { EXP = TRIP.expenses.filter(e => !e.excluded); total = EXP.reduce((s, e) => s + e.amount, 0); }
 function tripView() {
   root.innerHTML = `<header class="head">
       <div class="topbar"><button class="back" data-go="">← Все поездки</button><span class="save" id="save">${CAN_WRITE ? '' : 'только просмотр'}</span></div>
@@ -354,14 +358,19 @@ function overviewTab() {
   const chips = arr => arr.length ? `<div class="ov-chips">${arr.map(ovChip).join('')}</div>` : '<p class="cap">Пока пусто.</p>';
   if (!past) {
     const refs = (T.packing.sections || []).flatMap(x => x.items), done = refs.filter(i => i.done).length;
-    const paid = EXP.reduce((a, e) => a + e.amount, 0), cats = {};
+    const paid = EXP.reduce((a, e) => a + e.amount, 0), cats = {}, going = started(T);
     EXP.forEach(e => { cats[e.category] = (cats[e.category] || 0) + e.amount; });
+    // во время поездки — сколько уже потрачено: заранее (жильё, билеты) и в поездке (из Дзенмани)
+    const inTrip = EXP.filter(e => e.zid).reduce((a, e) => a + e.amount, 0), todayISO = isoDay(today());
+    const todaySum = EXP.filter(e => e.zid && e.date === todayISO).reduce((a, e) => a + e.amount, 0);
+    const moneyCap = going ? [`заранее ${fmt(paid - inTrip)}`, `в поездке ${fmt(inTrip)}`, todaySum ? `сегодня ${fmt(todaySum)}` : ''].filter(Boolean).join(' · ')
+      : Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(k.toLowerCase())} ${fmt(v)}`).join(' · ');
     return `<div class="ov">${headBlock}
       <div class="ov-tiles">
         <div class="ls-block ov-tile"><div class="ov-top"><span class="cap">Чемодан</span>${ovIb('suit', 'var(--lemon)')}</div><b class="ov-big">${done} из ${refs.length}</b>
           <div class="ov-bar"><i style="width:${refs.length ? done / refs.length * 100 : 0}%;background:var(--lemon)"></i></div><span class="cap">собрано</span></div>
-        <div class="ls-block ov-tile"><div class="ov-top"><span class="cap">Оплачено</span>${ovIb('rub', 'var(--pink)')}</div><b class="ov-big">${paid ? fmt(paid) : '—'}</b>
-          <span class="cap">${Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(k.toLowerCase())} ${fmt(v)}`).join(' · ')}</span></div>
+        <div class="ls-block ov-tile"><div class="ov-top"><span class="cap">${going ? 'Потрачено' : 'Оплачено'}</span>${ovIb('rub', 'var(--pink)')}</div><b class="ov-big">${paid ? fmt(paid) : '—'}</b>
+          <span class="cap">${moneyCap}</span></div>
         <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Еда на примете · ${T.food.length}</span>${ovIb('food', 'var(--sand)')}</div>${chips(T.food)}</div>
         <div class="ls-block ov-tile wide"><div class="ov-top"><span class="cap">Места на примете · ${T.places.length}</span>${ovIb('pin', 'var(--sky)')}</div>${chips(T.places)}</div>
       </div>${notes}</div>`;
@@ -396,18 +405,25 @@ const GROUPS = [
 ];
 const PREPAID = ['Жильё', 'Дорога'];
 const groupOf = c => GROUPS.find(g => g.cats.includes(c)) || GROUPS[GROUPS.length - 1];
-const note = e => e.rank ? `${e.rank}-е место среди ресторанов поездки` : (e.note || '');
+const note = e => e.rank ? `${e.rank}-е место среди ресторанов поездки` : [e.note, e.zid && e.who ? `платил${e.who === 'Мария' ? 'а' : ''} ${e.who}` : ''].filter(Boolean).join(' · ');
+// дата траты: из Дзенмани — «16 окт», оплаченное заранее (жильё, билеты) — «заранее»
+const dayOf = e => e.date ? (([, m, d]) => `${+d} ${MON_GEN[m - 1].slice(0, 3)}`)(e.date.split('-')) : PREPAID.includes(e.category) ? 'заранее' : '';
+const zenWhen = z => { const d = new Date(z); return isNaN(d) ? '' : `${d.getDate()} ${MON_GEN[d.getMonth()]}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function summaryOf(t) {
   const tot = t.expenses.reduce((s, e) => s + e.amount, 0), n = nightsOf(t);
   const onSite = t.expenses.filter(e => !PREPAID.includes(e.category)).reduce((s, e) => s + e.amount, 0);
   return { id: t.id, total: tot, perDay: n ? tot / n : null, onSiteDay: n ? onSite / n : null };
 }
 function spend() {
-  if (!EXP.length) return `<div class="ls-block"><div class="ls-empty">${UMBRELLA}<span class="cap">Трат пока нет. После поездки соберу их из Дзенмани.</span></div></div>`;
+  // траты из Дзенмани приходят сами: всё, что потрачено в даты поездки (Мария, 16.10.26); лишнее — кнопкой «×» в «Не про поездку»
+  const OUT = TRIP.expenses.filter(e => e.excluded);
+  if (!EXP.length && !OUT.length) return `<div class="ls-block"><div class="ls-empty">${UMBRELLA}<span class="cap">Трат пока нет. В дни поездки они придут сами из Дзенмани.</span></div></div>`;
+  const going = started(TRIP) && !ended(TRIP), dayN = going ? Math.round((today() - new Date(TRIP.dates.start + 'T00:00:00')) / 864e5) + 1 : null;
+  const todaySum = EXP.filter(e => e.zid && e.date === isoDay(today())).reduce((s, e) => s + e.amount, 0);
   const perNight = v => nights ? fmt(v / nights) : '—';
   const groups = GROUPS.map(g => ({ ...g, items: EXP.filter(e => groupOf(e.category).key === g.key) }))
     .map(g => ({ ...g, sum: g.items.reduce((s, e) => s + e.amount, 0) })).filter(g => g.sum > 0).sort((a, b) => b.sum - a.sum);
-  const max = groups[0].sum;
+  const max = groups.length ? groups[0].sum : 1;
   const pct = v => { const p = v / total * 100; return (p < 1 ? p.toFixed(1).replace('.', ',') : Math.round(p)) + '%'; };
   const onSite = EXP.filter(e => !PREPAID.includes(e.category)).reduce((s, e) => s + e.amount, 0);
   const others = Object.values(TRIPS).filter(t => t.id !== TRIP.id && ended(t)).map(summaryOf);
@@ -426,27 +442,35 @@ function spend() {
       <span class="col wide-only">${fmt(g.sum)}</span><span class="col muted wide-only">${pct(g.sum)}</span><span class="col muted wide-only">${perNight(g.sum)}</span>
     </div>`).join('');
   const rows = EXP.filter(e => !state.group || groupOf(e.category).key === state.group).slice().sort((a, b) => {
-    const k = state.sort, va = k === 'note' ? note(a) : a[k], vb = k === 'note' ? note(b) : b[k];
+    const k = state.sort, va = k === 'note' ? note(a) : (a[k] ?? ''), vb = k === 'note' ? note(b) : (b[k] ?? '');
     return typeof va === 'number' ? (va - vb) * state.dir : String(va).localeCompare(String(vb), 'ru') * state.dir;
   });
+  const dated = EXP.some(e => e.date), zen = TRIP.expenses.some(e => e.zid);
   const th = (k, label, cls = '') => `<th class="${cls}"><button data-sort="${k}"${state.sort === k ? ` aria-sort="${state.dir > 0 ? 'ascending' : 'descending'}"` : ''}>${label}${state.sort === k ? (state.dir > 0 ? ' ↑' : ' ↓') : ''}</button></th>`;
   const chip = g => `<button data-group="${g ? esc(g.key) : ''}" aria-pressed="${(g ? g.key : null) === state.group}">${g ? `<span class="sq" style="--g:${g.color}"></span>` : ''}${g ? esc(g.key) : 'Все'} <span class="c num">${g ? g.items.length : EXP.length}</span></button>`;
   return `<div style="display:grid;gap:var(--space-6)">
     <div class="summary">
       <div class="ls-block ls-block-pink ls-stat"><b>${fmt(total)}</b><span class="cap">всего за поездку</span><span class="cap cmp">${compare(total, 'total')}</span></div>
-      <div class="ls-block ls-stat"><b>${perNight(total)}</b><span class="cap">в сутки, всё вместе</span><span class="cap cmp">${compare(nights ? total / nights : null, 'perDay')}</span></div>
-      <div class="ls-block ls-stat"><b>${perNight(onSite)}</b><span class="cap">в сутки на месте, без жилья и дороги</span><span class="cap cmp">${compare(nights ? onSite / nights : null, 'onSiteDay')}</span></div>
+      ${going ? `<div class="ls-block ls-stat"><b>${fmt(onSite)}</b><span class="cap">в поездке, без жилья и дороги</span><span class="cap cmp">${todaySum ? `сегодня ${fmt(todaySum)}` : 'сегодня пока ничего'}</span></div>
+      <div class="ls-block ls-stat"><b>${fmt(onSite / dayN)}</b><span class="cap">в день на месте</span><span class="cap cmp">за ${dayN} из ${nights + 1} ${plural(nights + 1, 'дня', 'дней', 'дней')}</span></div>`
+      : `<div class="ls-block ls-stat"><b>${perNight(total)}</b><span class="cap">в сутки, всё вместе</span><span class="cap cmp">${compare(nights ? total / nights : null, 'perDay')}</span></div>
+      <div class="ls-block ls-stat"><b>${perNight(onSite)}</b><span class="cap">в сутки на месте, без жилья и дороги</span><span class="cap cmp">${compare(nights ? onSite / nights : null, 'onSiteDay')}</span></div>`}
     </div>
     <section class="section"><h2 class="ls-h">Куда ушли деньги</h2>
       <div class="ls-block cats"><div class="cat head"><span style="grid-area:name">Категория</span><span class="wide-only"></span><span class="col wide-only">Сумма</span><span class="col wide-only">Доля</span><span class="col wide-only">В сутки</span><span class="col narrow-only" style="grid-area:vals">Сумма</span></div>${catRows}</div>
     </section>
     <section class="section"><h2 class="ls-h" id="all-spend">Все траты</h2>
+      ${TRIP.zen ? `<p class="cap zen-fresh" title="Траты за даты поездки приходят из Дзенмани сами, раз в час — после синхронизации в Дзенмани">Дзенмани: данные на ${zenWhen(TRIP.zen.updated)}</p>` : ''}
       <div class="filters">${chip(null)}${groups.map(chip).join('')}</div>
       <div class="table-box"><table class="ls-table">
-        <thead><tr>${th('name', 'Название')}${th('amount', 'Сумма', 'num')}${th('category', 'Категория')}${th('note', 'Комментарий')}</tr></thead>
-        <tbody>${rows.map(e => `<tr><td class="name">${esc(e.name)}</td><td class="num">${fmt(e.amount)}</td><td><span class="ls-tag ${groupOf(e.category).tag}">${esc(e.category)}</span></td><td class="note">${esc(note(e))}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><td>Итого${state.group ? ' · ' + esc(state.group) : ''}</td><td class="num">${fmt(rows.reduce((s, e) => s + e.amount, 0))}</td><td colspan="2" class="cap">${rows.length} ${plural(rows.length, 'трата', 'траты', 'трат')}</td></tr></tfoot>
+        <thead><tr>${th('name', 'Название')}${th('amount', 'Сумма', 'num')}${th('category', 'Категория')}${dated ? th('date', 'Дата') : ''}${th('note', 'Комментарий')}${zen ? '<th class="w-only"></th>' : ''}</tr></thead>
+        <tbody>${rows.map(e => `<tr><td class="name">${zen && e.zid ? `<button class="xbtn xn w-only" data-excl="${esc(e.zid)}" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}${esc(e.name)}</td><td class="num">${fmt(e.amount)}</td><td><span class="ls-tag ${groupOf(e.category).tag}">${esc(e.category)}</span></td>${dated ? `<td class="day">${dayOf(e)}</td>` : ''}<td class="note">${esc(note(e))}</td>${zen ? `<td class="act w-only">${e.zid ? `<button class="xbtn" data-excl="${esc(e.zid)}" title="Не про поездку — убрать из трат" aria-label="Не про поездку: ${esc(e.name)}">×</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody>
+        <tfoot><tr><td>Итого${state.group ? ' · ' + esc(state.group) : ''}</td><td class="num">${fmt(rows.reduce((s, e) => s + e.amount, 0))}</td><td colspan="${2 + (dated ? 1 : 0) + (zen ? 1 : 0)}" class="cap">${rows.length} ${plural(rows.length, 'трата', 'траты', 'трат')}</td></tr></tfoot>
       </table></div>
+      ${OUT.length ? `<details class="ls-block outs"${state.outOpen ? ' open' : ''}><summary>Не про поездку · ${OUT.length} · ${fmt(OUT.reduce((s, e) => s + e.amount, 0))}</summary>
+        <p class="cap">Что ты убрала, и домашнее — ипотека, коммуналка, подписки, маркетплейсы — само. В итоги не входит.</p>
+        ${OUT.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || b.amount - a.amount).map(e => `<div class="out-row"><span class="nm">${esc(e.name)}<span class="cap">${[dayOf(e), e.category, note(e)].filter(Boolean).map(esc).join(' · ')}</span></span>
+          <span class="num">${fmt(e.amount)}</span><button class="link w-only" data-back="${esc(e.zid)}">вернуть</button></div>`).join('')}</details>` : ''}
     </section>
   </div>`;
 }
@@ -970,6 +994,14 @@ root.addEventListener('click', e => {
       if (act === 'del' && CAN_WRITE) { const [gone] = P.splice(i, 1); deleteFile(gone.file, `«${TRIP.title}»: удалено фото`).catch(() => {}); changed(); ui.open = P.length ? Math.min(i, P.length - 1) : null; }
       render(); return;
     }
+  }
+  const sm = state.tab === 'Траты' && e.target.closest('.outs > summary');
+  if (sm) { state.outOpen = !sm.parentElement.open; return; }   // раскрытое «Не про поездку» остаётся раскрытым после правок
+  const xb = state.tab === 'Траты' && CAN_WRITE && e.target.closest('[data-excl],[data-back]');
+  if (xb) {
+    const it = TRIP.expenses.find(q => q.zid === (xb.dataset.excl || xb.dataset.back));
+    if (it) { if (xb.dataset.excl) it.excluded = true; else delete it.excluded; state.outOpen = !xb.dataset.excl || state.outOpen; refreshExp(); changed(); render(); }
+    return;
   }
   const s = e.target.closest('[data-sort]');
   if (s) { const k = s.dataset.sort; state.dir = state.sort === k ? -state.dir : (k === 'amount' ? -1 : 1); state.sort = k; render(); return; }
