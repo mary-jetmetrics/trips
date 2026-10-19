@@ -423,12 +423,12 @@ const linkable = e => fitsFood(e) || (fitsPlace(e) && TRIP.places.length > 0);
 const freeChecks = kind => EXP.filter(e => e.zid && !e.place && (kind === 'food' ? fitsFood(e) : fitsPlace(e)))
   .sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.amount - a.amount);
 // название траты: чек из банка, привязанный к месту, — одним названием места (банковское — в подсказке), без дубля (Мария, 16.10.26);
-// непривязанный — банковское и «где?»; ручные траты — своё название и место под ним
+// непривязанный — банковское название бледным штрихом, нажать — привязать (без «где?», Мария, 19.10.26); ручные траты — своё название и место под ним
 function nameCell(e) {
   const i = TRIP.expenses.indexOf(e);
-  if (e.zid && e.place) return CAN_WRITE ? `<button class="pname" data-pplace="${i}" title="Из банка: ${esc(e.name)}. Нажми, чтобы поменять или отвязать">${esc(e.place)}</button>`
+  if (e.zid && e.place) return CAN_WRITE ? `<span class="pname" role="button" tabindex="0" data-pplace="${i}" title="Из банка: ${esc(e.name)}. Нажми, чтобы поменять или отвязать">${esc(e.place)}</span>`
     : `<span title="Из банка: ${esc(e.name)}">${esc(e.place)}</span>`;
-  if (e.zid) return esc(e.name) + (CAN_WRITE && linkable(e) ? `<button class="ptag empty" data-pplace="${i}" title="Привязать к заведению или месту">где?</button>` : '');
+  if (e.zid) return CAN_WRITE && linkable(e) ? `<span class="pname free" role="button" tabindex="0" data-pplace="${i}" title="Нажми, чтобы привязать к заведению или месту">${esc(e.name)}</span>` : esc(e.name);
   return esc(e.name) + (e.place ? `<span class="ptag">${esc(e.place)}</span>` : '');
 }
 function pickRow(e, cols) {
@@ -1135,7 +1135,7 @@ root.addEventListener('keydown', e => {
   }
   if (e.key !== 'Enter') { const pk = e.target.closest('[data-pick]'); if (pk && e.key === ' ') { e.preventDefault(); pk.click(); } return; }
   const t = e.target;
-  if (t.matches('[data-pick]')) { e.preventDefault(); t.click(); return; }
+  if (t.matches('[data-pick]') || t.matches('[data-pplace]')) { e.preventDefault(); t.click(); return; }
   if (!CAN_WRITE) return;
   if (t.matches('[data-add]')) { e.preventDefault(); packAdd(t); return; }
   if (t.matches('[data-edit]')) { e.preventDefault(); commitEdit(t); return; }
