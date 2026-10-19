@@ -13,7 +13,7 @@ let CAN_WRITE = LS.get('trips-ro') !== '1';
 let INDEX = [];
 const TRIPS = {}, SHA = {}, BLOBS = {}, ORIG = {};   // ORIG — карточка поездки, как она лежит в репозитории (для слияния правок)
 let TRIP = null, EXP = [], nights = null, total = 0;
-const state = { tab: 'Траты', group: null, sort: 'amount', dir: -1 };
+const state = { tab: 'Траты', group: null, sort: 'date', dir: -1 };   // траты по умолчанию — по дате, новые сверху (Мария, 19.10.26)
 const root = document.getElementById('root');
 
 /* ---------- общее ---------- */
@@ -152,7 +152,7 @@ async function boot() {
 function route() {
   const m = location.hash.match(/^#\/trip\/([^/]+)(?:\/(.+))?/);
   if (m && TRIPS[m[1]]) {
-    if (!TRIP || TRIP.id !== m[1]) { setTrip(m[1]); state.group = null; }
+    if (!TRIP || TRIP.id !== m[1]) { setTrip(m[1]); state.group = null; state.sort = 'date'; state.dir = -1; }   // каждая поездка открывается с сортировкой по умолчанию
     const tab = m[2] ? decodeURIComponent(m[2]) : null;
     state.tab = tab === 'Вещи' ? 'Чемодан' : tab || 'Обзор';   // поездка открывается на «Обзоре» (Мария, 12.10.26)
     tripView();
@@ -512,12 +512,14 @@ function spend() {
       <span class="vals narrow-only">${fmt(g.sum)}<span class="cap">${pct(g.sum)} · ${perNight(g.sum)} в сутки</span></span>
       <span class="col wide-only">${fmt(g.sum)}</span><span class="col muted wide-only">${pct(g.sum)}</span><span class="col muted wide-only">${perNight(g.sum)}</span>
     </div>`).join('');
+  // по дате: у архивных поездок дат нет — там по сумме; внутри одного дня — по сумме (времени покупки Дзенмани не отдаёт)
+  const sortKey = state.eff = state.sort === 'date' && !EXP.some(e => e.date) ? 'amount' : state.sort;
   const rows = EXP.filter(e => !state.group || groupOf(e.category).key === state.group).slice().sort((a, b) => {
-    const k = state.sort, va = k === 'note' ? note(a) : (a[k] ?? ''), vb = k === 'note' ? note(b) : (b[k] ?? '');
-    return typeof va === 'number' ? (va - vb) * state.dir : String(va).localeCompare(String(vb), 'ru') * state.dir;
+    const k = sortKey, va = k === 'note' ? note(a) : (a[k] ?? ''), vb = k === 'note' ? note(b) : (b[k] ?? '');
+    return (typeof va === 'number' ? (va - vb) * state.dir : String(va).localeCompare(String(vb), 'ru') * state.dir) || b.amount - a.amount;
   });
   const dated = EXP.some(e => e.date), zen = TRIP.expenses.some(e => e.zid);
-  const th = (k, label, cls = '') => `<th class="${cls}"><button data-sort="${k}"${state.sort === k ? ` aria-sort="${state.dir > 0 ? 'ascending' : 'descending'}"` : ''}>${label}${state.sort === k ? (state.dir > 0 ? ' ↑' : ' ↓') : ''}</button></th>`;
+  const th = (k, label, cls = '') => `<th class="${cls}"><button data-sort="${k}"${sortKey === k ? ` aria-sort="${state.dir > 0 ? 'ascending' : 'descending'}"` : ''}>${label}${sortKey === k ? (state.dir > 0 ? ' ↑' : ' ↓') : ''}</button></th>`;
   const chip = g => `<button data-group="${g ? esc(g.key) : ''}" aria-pressed="${(g ? g.key : null) === state.group}">${g ? `<span class="sq" style="--g:${g.color}"></span>` : ''}${g ? esc(g.key) : 'Все'} <span class="c num">${g ? g.items.length : EXP.length}</span></button>`;
   return `<div style="display:grid;gap:var(--space-6)">
     <div class="summary">
@@ -1104,7 +1106,7 @@ root.addEventListener('click', e => {
     return;
   }
   const s = e.target.closest('[data-sort]');
-  if (s) { const k = s.dataset.sort; state.dir = state.sort === k ? -state.dir : (k === 'amount' ? -1 : 1); state.sort = k; render(); return; }
+  if (s) { const k = s.dataset.sort; state.dir = (state.eff || state.sort) === k ? -state.dir : (k === 'amount' || k === 'date' ? -1 : 1); state.sort = k; render(); return; }
   const pk = e.target.closest('[data-pick]');
   if (pk) { state.group = state.group === pk.dataset.pick ? null : pk.dataset.pick; render(); if (state.group) document.getElementById('all-spend').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   const g = e.target.closest('[data-group]');
