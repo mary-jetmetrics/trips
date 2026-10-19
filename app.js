@@ -406,8 +406,8 @@ const GROUPS = [
 const PREPAID = ['Жильё', 'Дорога'];
 const groupOf = c => GROUPS.find(g => g.cats.includes(c)) || GROUPS[GROUPS.length - 1];
 const note = e => [e.rank ? `${e.rank}-е место среди ресторанов поездки` : '', e.note].filter(Boolean).join(' · ');   // «платил Глеб» не показываем (Мария, 16.10.26)
-// дата траты: из Дзенмани — «16 окт», оплаченное заранее (жильё, билеты) — «заранее»
-const dayOf = e => e.date ? (([, m, d]) => `${+d} ${MON_GEN[m - 1].slice(0, 3)}`)(e.date.split('-')) : PREPAID.includes(e.category) ? 'заранее' : '';
+// дата траты — «16 окт»; нет даты — пусто, без слов (Мария, 19.10.26)
+const dayOf = e => e.date ? (([, m, d]) => `${+d} ${MON_GEN[m - 1].slice(0, 3)}`)(e.date.split('-')) : '';
 const zenWhen = z => { const d = new Date(z); return isNaN(d) ? '' : `${d.getDate()} ${MON_GEN[d.getMonth()]}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function summaryOf(t) {
   const tot = t.expenses.reduce((s, e) => s + e.amount, 0), n = nightsOf(t);
@@ -452,6 +452,38 @@ function commitNote(input, keep) {
   const v = input.value.trim();
   if (keep && it && v !== (it.note || '')) { if (v) it.note = v; else delete it.note; changed(); }
   render();
+}
+// «Обновить» (Мария, 19.10.26): приложение просит GitHub запустить «Траты из Дзенмани» (repository_dispatch — ключу хватает «Contents: write»)
+// и до двух минут ждёт, пока поменяется карточка поездки; свои несохранённые правки сливаются, как при конфликте
+const ZEN = { busy: false, msg: '' };
+let ZEN_POLL = 10000;
+const zenWindow = () => TRIP.dates && started(TRIP) && today() <= new Date(new Date(TRIP.dates.end + 'T00:00:00').getTime() + 10 * 864e5);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function pullTrip(id) {
+  for (let k = 0; k < 20 && (saving || dirty); k++) await sleep(500);
+  const fresh = await readJSON(`trips/${id}.json`);
+  let merged = null;
+  try { merged = merge3(JSON.parse(ORIG[id]), JSON.parse(JSON.stringify(TRIPS[id])), fresh); } catch (e) { merged = null; }
+  ORIG[id] = JSON.stringify(fresh); remember(id, fresh);
+  TRIPS[id] = merged || fresh;
+  if (TRIP && TRIP.id === id) setTrip(id);
+  if (merged && !same(merged, fresh)) changed();
+}
+async function zenRefresh() {
+  if (ZEN.busy || !TRIP) return;
+  const id = TRIP.id, file = `trips/${id}.json`;
+  ZEN.busy = true; ZEN.msg = ''; render();
+  try { await gh('/dispatches', { method: 'POST', body: JSON.stringify({ event_type: 'zen' }) }); }
+  catch (e) { ZEN.busy = false; ZEN.msg = e.status === 403 || e.status === 404 ? 'у этого ключа нет права запускать обновление' : 'не получилось, проверь интернет'; render(); return; }
+  let got = false;
+  for (let k = 0; k < 12 && !got; k++) {
+    await sleep(ZEN_POLL);
+    try { const j = await (await gh(`/contents/${file}?ref=${BRANCH}`, { cache: 'no-store' })).json(); got = j.sha !== SHA[file]; } catch (e) { /* в другой раз */ }
+  }
+  if (got) { try { await pullTrip(id); } catch (e) { got = false; } }
+  ZEN.busy = false; ZEN.msg = got ? 'обновлено' : 'новых данных нет — синхронизируй Дзенмани на телефоне';
+  if (state.tab === 'Траты' || state.tab === 'Обзор') render();
+  setTimeout(() => { ZEN.msg = ''; if (state.tab === 'Траты' && !ZEN.busy) render(); }, 8000);
 }
 function spend() {
   // траты из Дзенмани приходят сами: всё, что потрачено в даты поездки (Мария, 16.10.26); лишнее — кнопкой «×» в «Не про поездку»
@@ -499,7 +531,8 @@ function spend() {
       <div class="ls-block cats"><div class="cat head"><span style="grid-area:name">Категория</span><span class="wide-only"></span><span class="col wide-only">Сумма</span><span class="col wide-only">Доля</span><span class="col wide-only">В сутки</span><span class="col narrow-only" style="grid-area:vals">Сумма</span></div>${catRows}</div>
     </section>
     <section class="section"><h2 class="ls-h" id="all-spend">Все траты</h2>
-      ${TRIP.zen ? `<p class="cap zen-fresh" title="Траты за даты поездки приходят из Дзенмани сами, раз в час — после синхронизации в Дзенмани">Дзенмани: данные на ${zenWhen(TRIP.zen.updated)}</p>` : ''}
+      ${TRIP.zen || zenWindow() ? `<p class="cap zen-fresh"><span title="Траты за даты поездки приходят из Дзенмани сами, раз в час — после синхронизации в Дзенмани на телефоне">${TRIP.zen ? `Дзенмани: данные на ${zenWhen(TRIP.zen.updated)}` : 'Дзенмани: пока без данных'}</span>
+        ${zenWindow() ? (ZEN.busy ? '<span class="zen-st">обновляю… около минуты</span>' : `<button class="link w-only" data-zen>Обновить</button>${ZEN.msg ? `<span class="zen-st">${ZEN.msg}</span>` : ''}`) : ''}</p>` : ''}
       <div class="filters">${chip(null)}${groups.map(chip).join('')}</div>
       <div class="table-box"><table class="ls-table">
         <thead><tr>${th('name', 'Название')}${th('amount', 'Сумма', 'num')}${th('category', 'Категория')}${dated ? th('date', 'Дата') : ''}${th('note', 'Комментарий')}${zen ? '<th class="w-only"></th>' : ''}</tr></thead>
@@ -1049,6 +1082,7 @@ root.addEventListener('click', e => {
     }
   }
   if (state.tab === 'Траты' && CAN_WRITE) {
+    if (e.target.closest('[data-zen]')) { zenRefresh(); return; }
     const pp = e.target.closest('[data-pplace]');
     if (pp) { state.pickFor = state.pickFor === +pp.dataset.pplace ? null : +pp.dataset.pplace; render(); const q = document.querySelector('[data-psearch]'); if (q) q.focus({ preventScroll: true }); return; }
     const ps = e.target.closest('[data-pset],[data-punlink],[data-pclose]');
