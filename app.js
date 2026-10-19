@@ -398,10 +398,10 @@ const CAT = (key, tag, color) => ({ key, tag, color, cats: [key] });
 const GRAY = ['ls-tag-gray', 'var(--gray)'];
 const GROUPS = [
   CAT('Жильё', '', 'var(--pink)'), CAT('Дорога', 'ls-tag-sky', 'var(--sky)'),
-  CAT('Готовая еда', 'ls-tag-lemon', 'var(--lemon)'), CAT('Продукты', 'ls-tag-lemon', 'var(--lemon)'),
+  CAT('Готовая еда', 'ls-tag-lemon', 'var(--lemon)'), CAT('Продукты', 'ls-tag-salad', 'var(--salad)'),   // продукты салатовым, отдельно от готовой еды (Мария, 19.10.26)
   CAT('Такси', 'ls-tag-sand', 'var(--sand)'), CAT('Транспорт', 'ls-tag-sand', 'var(--sand)'),
-  CAT('Развлечения и спорт', 'ls-tag-lavender', 'var(--lavender)'), CAT('Подарки', 'ls-tag-salad', 'var(--salad)'),
-  ...['Здоровье', 'Красота', 'Одежда', 'Другое'].map(k => CAT(k, ...GRAY)),
+  CAT('Развлечения и спорт', 'ls-tag-lavender', 'var(--lavender)'),
+  ...['Подарки', 'Здоровье', 'Красота', 'Одежда', 'Другое'].map(k => CAT(k, ...GRAY)),   // подарки редкие — серым, как прочее
 ];
 const PREPAID = ['Жильё', 'Дорога'];
 const groupOf = c => GROUPS.find(g => g.cats.includes(c)) || GROUPS[GROUPS.length - 1];
